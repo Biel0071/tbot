@@ -1,0 +1,14 @@
+mss==9.0.1
+opencv-python==4.10.0.84
+numpy==1.26.4
+pytesseract==0.3.13
+Pillow==10.4.0
+pyautogui==0.9.54
+pynput==1.7.7
+tkinter-tooltip==1.0.0
+pywin32==306
+comtypes==1.4.1
+asyncio==3.4.3
+aiohttp==3.10.5
+jsonschema==4.23.0
+scikit-learn==1.5.2
