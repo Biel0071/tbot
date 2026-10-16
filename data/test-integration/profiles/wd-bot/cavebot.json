@@ -1,0 +1,56 @@
+{
+  "routes": [
+    {
+      "route": "main-hunt",
+      "loop": true,
+      "waypoints": [
+        {
+          "type": "TRAVEL",
+          "destination": "hunt"
+        },
+        {
+          "type": "WALK",
+          "x": 995,
+          "y": 1000,
+          "z": 7
+        },
+        {
+          "type": "HUNT",
+          "duration": 3600
+        },
+        {
+          "type": "WALK",
+          "x": 1005,
+          "y": 1000,
+          "z": 7
+        },
+        {
+          "type": "HUNT",
+          "duration": 3600
+        },
+        {
+          "type": "REFILL"
+        }
+      ]
+    },
+    {
+      "route": "city-loop",
+      "loop": false,
+      "waypoints": [
+        {
+          "type": "TRAVEL",
+          "destination": "city"
+        },
+        {
+          "type": "SELL"
+        },
+        {
+          "type": "REFILL"
+        },
+        {
+          "type": "BANK"
+        }
+      ]
+    }
+  ]
+}
