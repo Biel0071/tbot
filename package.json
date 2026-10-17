@@ -1,0 +1,21 @@
+{
+  "name": "tbot",
+  "version": "1.0.0-mvp",
+  "description": "T BOT — Autonomous Tibia Bot: Desktop Runtime + Overlay (MVP 1.0)",
+  "type": "module",
+  "main": "apps/desktop/main.js",
+  "scripts": {
+    "start": "electron apps/desktop/main.js",
+    "runtime": "node runtime/api/server.js",
+    "validate": "node scripts/validate-mvp.js",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "vitest": "^1.6.0"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "license": "MIT"
+}

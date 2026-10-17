@@ -1,0 +1,18 @@
+{
+  "creatures": [
+    {
+      "name": "Dragon",
+      "priority": 80,
+      "maxDistance": 7,
+      "chase": true,
+      "avoid": false
+    },
+    {
+      "name": "Rotworm",
+      "priority": 40,
+      "maxDistance": 5,
+      "chase": true,
+      "avoid": false
+    }
+  ]
+}

@@ -1,0 +1,34 @@
+{
+  "keys": [
+    {
+      "slot": "F1",
+      "action": "potion_health",
+      "condition": {
+        "field": "hpPercent",
+        "op": "<",
+        "value": 60
+      },
+      "enabled": true
+    },
+    {
+      "slot": "F2",
+      "action": "potion_mana",
+      "condition": {
+        "field": "manaPercent",
+        "op": "<",
+        "value": 30
+      },
+      "enabled": true
+    },
+    {
+      "slot": "F3",
+      "action": "eat",
+      "condition": {
+        "field": "food",
+        "op": "<",
+        "value": 10
+      },
+      "enabled": true
+    }
+  ]
+}

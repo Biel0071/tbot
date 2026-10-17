@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8" />
+<style>
+  /* spec §25 overlay — compact HUD, dark/gold/amber, no animations */
+  *{margin:0;padding:0;font-family:"Segoe UI",sans-serif;font-size:11px}
+  body{background:transparent;overflow:hidden}
+  #hud{background:rgba(12,12,16,.88);border:1px solid #c9a227;border-radius:6px;padding:8px 10px;color:#d8d8de;width:300px}
+  .t{color:#c9a227;font-weight:700;letter-spacing:1px}
+  .st{color:#3fbf60}.danger{color:#e05252}
+  .row{display:flex;justify-content:space-between;margin-top:2px}
+  .k{color:#8a8a95}
+</style>
+</head>
+<body>
+<div id="hud">
+  <div class="row"><span class="t">T BOT</span><span id="bot" class="st">● OFFLINE</span></div>
+  <div class="row"><span class="k">State:</span><b id="state">–</b></div>
+  <div class="row"><span class="k">Target:</span><b id="target">–</b></div>
+  <div class="row"><span class="k">HP / MP:</span><b id="hpmp">–</b></div>
+  <div class="row"><span class="k">XP/H:</span><b id="xph">–</b></div>
+  <div class="row"><span class="k">Loot:</span><b id="loot">–</b></div>
+  <div class="row"><span class="k">Waypoint:</span><b id="wp">–</b></div>
+</div>
+<script src="overlay/overlay.js"></script>
+</body>
+</html>
