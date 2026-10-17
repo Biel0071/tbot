@@ -204,7 +204,8 @@ function buildStates(ctx) {
       // city-side destination, hand over to REFILL instead of looping here.
       // (Prevents the BANK→TRAVEL→REFILL livelock: teleport keeps us at city.)
       const cityPosNow = ctx.travel.resolve('city');
-      if (cityPosNow && distance(snap.position, cityPosNow) < 5) {
+      const needsNow = ctx.resources.evaluate(snap);
+      if ((needsNow.refill || needsNow.sell) && cityPosNow && distance(snap.position, cityPosNow) < 5) {
         ctx.telemetry.record({ type: TelemetryEvents.TRAVEL_COMPLETED, payload: { arrived: 'city' } });
         return go(BotStates.REFILL, 'already at city — refill pipeline');
       }
@@ -223,7 +224,7 @@ function buildStates(ctx) {
           return go(BotStates.REFILL, 'arrived at city for refill/sell');
         }
       }
-      const atHunt = wp?.type === WaypointTypes.HUNT ||
+      const atHunt = wpAfter?.type === WaypointTypes.HUNT ||
         distance(snap.position, ctx.travel.resolve('hunt')) < 20;
       if (atHunt) {
         ctx.telemetry.record({ type: TelemetryEvents.TRAVEL_COMPLETED, payload: { arrived: 'hunt' } });

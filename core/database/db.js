@@ -55,9 +55,12 @@ export class Database {
   }
 
   _flush() {
-    if (this.kind === 'json') {
+    if (this.kind !== 'json') return;
+    if (this.closed) return; // avoid writes during/after teardown (prevents unhandled rejections in Vitest)
+    try {
+      fs.mkdirSync(path.dirname(this._jsonPath), { recursive: true });
       fs.writeFileSync(this._jsonPath, JSON.stringify(this.store));
-    }
+    } catch {}
   }
 
   insert(table, row) {
@@ -123,5 +126,8 @@ export class Database {
     });
   }
 
-  close() { if (this.kind === 'sqlite') this.db.close(); else this._flush(); }
+  close() {
+    if (this.kind === 'sqlite') this.db.close();
+    else { this._flush(); this.closed = true; }
+  }
 }

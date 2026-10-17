@@ -151,5 +151,11 @@ export class RuntimeManager {
     this._emit({ type: 'WATCHDOG_RESTARTED' });
   }
 
-  close() { this._stopWatchdog(); this.db.close(); }
+  close() {
+    this._stopWatchdog();
+    // Stop the engine tick loop BEFORE closing the DB so no in-flight tick
+    // writes to a closed database (avoids unhandled rejections on teardown).
+    if (this.engine?.machine) this.engine.machine.running = false;
+    this.db.close();
+  }
 }

@@ -78,13 +78,36 @@ function drawRadar(st) {
     g.fillText('sem dados de runtime — clique ATIVAR BOT', 20, 30);
     return;
   }
-  // NOTE: battle list lives in the engine snapshot; /api/status exposes summary.
-  // Radar plots player + target marker + next waypoint from real fields only.
+  // Radar plots ONLY real fields from the perception snapshot (§6 GameSnapshot):
+  // player at center, battleList creatures relative to player, current target
+  // highlighted, next waypoint marker.
   const cx = cv.width/2, cy = cv.height/2;
+  const SCALE = 8; // tiles -> px
+  const pp = snap.position;
+  const rel = (p) => ({ x: cx + (p.x - pp.x) * SCALE, y: cy + (p.y - pp.y) * SCALE });
+
+  // Battle list creatures (monsters / NPCs) — real data from snapshot.battleList
+  for (const c of (snap.battleList ?? [])) {
+    const pos = rel(c.position ?? c);
+    if (pos.x < 4 || pos.y < 4 || pos.x > cv.width - 4 || pos.y > cv.height - 4) continue;
+    const isTarget = st.target?.name === c.name || snap.currentTarget?.name === c.name;
+    g.fillStyle = isTarget ? '#e0533d' : '#8f8fa0';
+    g.beginPath(); g.arc(pos.x, pos.y, isTarget ? 6 : 4, 0, 7); g.fill();
+    g.fillStyle = '#b8b8c4'; g.font = '10px Segoe UI';
+    const hpPct = c.maxHp ? Math.round((c.hp / c.maxHp) * 100) : null;
+    g.fillText(`${c.name}${hpPct !== null ? ` ${hpPct}%` : ''}`, pos.x + 7, pos.y + 3);
+    if (isTarget) { g.strokeStyle = '#e0533d'; g.strokeRect(pos.x - 9, pos.y - 9, 18, 18); }
+  }
+
+  // Next waypoint marker (real navigation state)
+  const wpPos = st.navigation?.nextPosition;
+  const wpDraw = wpPos ? rel(wpPos) : { x: cx + 80, y: cy - 40 };
+  g.fillStyle = '#ffb347'; g.fillRect(wpDraw.x - 4, wpDraw.y - 4, 8, 8);
+  g.fillStyle = '#d8d8de'; g.fillText(`WP ${st.navigation?.waypointIndex ?? 0}/${st.navigation?.total ?? 0}`, wpDraw.x + 8, wpDraw.y - 6);
+
+  // Player at center (drawn last so it stays on top)
   g.fillStyle = '#c9a227'; g.beginPath(); g.arc(cx, cy, 6, 0, 7); g.fill();
-  g.fillStyle = '#d8d8de'; g.fillText('PLAYER', cx+10, cy+4);
-  g.fillStyle = '#ffb347'; g.fillRect(cx+80, cy-40, 8, 8);
-  g.fillStyle = '#d8d8de'; g.fillText(`WP ${st.navigation?.waypointIndex ?? 0}/${st.navigation?.total ?? 0}`, cx+94, cy-32);
+  g.fillStyle = '#d8d8de'; g.font = '11px Segoe UI'; g.fillText('PLAYER', cx + 10, cy + 4);
 }
 
 /* ---------- Cavebot editor (real routes via API) ---------- */
@@ -94,7 +117,34 @@ async function renderCavebot() {
     routes.map(r => `<tr><td>${r.route}</td><td>${r.loop?'yes':'no'}</td><td>${
       r.waypoints.map(w => `${w.type}${w.x!==undefined?`@${w.x}/${w.y}/${w.z}`:''}${w.destination?`→${w.destination}`:''}`).join(' → ')
     }</td></tr>`).join('')}</table></div>
-    <div class="card"><pre>Adicionar rota via POST /api/routes (schema §8). Editor visual completo: V1.1.</pre></div>`;
+    <div class="card">
+      <h3>Nova rota (POST /api/routes)</h3>
+      <form id="routeForm" style="display:flex;flex-direction:column;gap:8px">
+        <input id="routeName" placeholder="nome da rota" required style="background:#121218;color:#d8d8de;border:1px solid #2a2a34;padding:6px"/>
+        <label style="color:#b8b8c4"><input type="checkbox" id="routeLoop" checked/> loop</label>
+        <textarea id="routeWps" rows="5" placeholder='[{"type":"WALK","x":100,"y":100,"z":7},{"type":"HUNT","duration":60}]'
+          style="background:#121218;color:#d8d8de;border:1px solid #2a2a34;padding:6px;font-family:monospace"></textarea>
+        <button type="submit" style="background:#c9a227;color:#111;border:0;padding:8px 14px;cursor:pointer">Criar rota</button>
+        <pre id="routeResult" style="color:#8f8fa0"></pre>
+      </form>
+    </div>`;
+  document.getElementById('routeForm').onsubmit = async (e) => {
+    e.preventDefault();
+    const out = document.getElementById('routeResult');
+    try {
+      const waypoints = JSON.parse(document.getElementById('routeWps').value || '[]');
+      const body = {
+        route: document.getElementById('routeName').value,
+        loop: document.getElementById('routeLoop').checked,
+        waypoints,
+      };
+      const res = await post('/api/routes', body);
+      out.textContent = `OK: ${JSON.stringify(res)}`;
+      renderCavebot();
+    } catch (err) {
+      out.textContent = `ERRO: ${err.message}`;
+    }
+  };
 }
 
 async function renderTable(title, cfgUrl, pick, cols) {

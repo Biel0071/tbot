@@ -8,6 +8,7 @@
     "start": "electron apps/desktop/main.js",
     "runtime": "node runtime/api/server.js",
     "validate": "node scripts/validate-mvp.js",
+    "test:e2e": "node scripts/validate-mvp.js",
     "test": "vitest run",
     "test:watch": "vitest"
   },
