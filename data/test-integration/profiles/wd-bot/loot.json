@@ -1,0 +1,15 @@
+{
+  "rules": [
+    {
+      "itemId": 123,
+      "name": "Dragon Ham",
+      "action": "SELL"
+    },
+    {
+      "itemId": 3031,
+      "name": "Rotworm Ham",
+      "action": "SELL"
+    }
+  ],
+  "defaultAction": "KEEP"
+}
