@@ -112,7 +112,7 @@ export class BotEngine {
     const ctx = this.ctx;
     return {
       bot: this.machine.running ? (this.machine.paused ? 'paused' : 'running') : 'stopped',
-      state: this.machine.current,
+      state: this.machine.status(),
       perception: ctx.perception.health(),
       navigation: ctx.navigator.status(),
       snapshot: ctx.lastSnapshot ? {

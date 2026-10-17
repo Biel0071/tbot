@@ -89,6 +89,7 @@ export class TelemetryEngine {
       sessionId: s.sessionId,
       character: s.character,
       time: fmtDuration(runtimeMs),
+      runtimeMs,
       xp: xp,
       xpPerHour: hours > 0 ? Math.round(xp / hours) : 0,
       kills: this.counters.kills,

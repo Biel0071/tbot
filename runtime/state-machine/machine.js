@@ -72,6 +72,14 @@ export class StateMachine {
   async pause() { this.paused = true; }
   async resume() { this.paused = false; }
 
+  /** Effective lifecycle status: OFFLINE / STARTING / PAUSED / STOPPING /
+   *  STOPPED / or the current FSM state (RUNNING semantics). Never fabricates. */
+  status() {
+    if (!this.running) return this.current ?? 'OFFLINE';
+    if (this.paused) return BotStates.PAUSED;
+    return this.current;
+  }
+
   /** spec §4.2 — immediate stop with max priority */
   async stop() {
     if (!this.running) return;
