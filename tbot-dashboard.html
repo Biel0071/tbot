@@ -1,0 +1,862 @@
+<!DOCTYPE html>
+<html class="dark" lang="pt-BR">
+<head>
+    <meta charset="utf-8"/>
+    <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+    <title>TBOT CHAT - Dashboard</title>
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;600;700&amp;family=Inter:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;600&amp;display=swap" rel="stylesheet"/>
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+    <script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "tertiary-container": "#ff9598",
+                        "on-error": "#690005",
+                        "primary-container": "#d4af37",
+                        "secondary": "#9fcaff",
+                        "outline": "#99907c",
+                        "surface-variant": "#353535",
+                        "on-tertiary-container": "#8f0022",
+                        "surface-container-highest": "#353535",
+                        "surface-dim": "#131313",
+                        "secondary-container": "#0e9aff",
+                        "on-error-container": "#ffdad6",
+                        "on-tertiary": "#680016",
+                        "surface": "#131313",
+                        "primary": "#f2ca50",
+                        "background": "#131313",
+                        "primary-fixed": "#ffe088",
+                        "inverse-on-surface": "#313030",
+                        "on-primary": "#3c2f00",
+                        "on-surface": "#e5e2e1",
+                        "on-secondary-fixed": "#001d36",
+                        "on-primary-fixed-variant": "#574500",
+                        "inverse-surface": "#e5e2e1",
+                        "on-secondary-fixed-variant": "#00497e",
+                        "inverse-primary": "#735c00",
+                        "tertiary-fixed": "#ffdad9",
+                        "on-tertiary-fixed-variant": "#920023",
+                        "surface-tint": "#e9c349",
+                        "on-background": "#e5e2e1",
+                        "secondary-fixed": "#d2e4ff",
+                        "outline-variant": "#4d4635",
+                        "error": "#ffb4ab",
+                        "on-primary-container": "#554300",
+                        "surface-bright": "#393939",
+                        "tertiary": "#ffbebf",
+                        "surface-container-high": "#2a2a2a",
+                        "surface-container": "#20201f",
+                        "secondary-fixed-dim": "#9fcaff",
+                        "tertiary-fixed-dim": "#ffb3b4",
+                        "on-secondary": "#003259",
+                        "on-tertiary-fixed": "#40000a",
+                        "error-container": "#93000a",
+                        "surface-container-lowest": "#0e0e0e",
+                        "surface-container-low": "#1c1b1b",
+                        "on-surface-variant": "#d0c5af",
+                        "on-primary-fixed": "#241a00",
+                        "on-secondary-container": "#003055",
+                        "primary-fixed-dim": "#e9c349"
+                    },
+                    borderRadius: {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    spacing: {
+                        "margin-desktop": "24px",
+                        "container-max": "1440px",
+                        "gutter": "16px",
+                        "margin-mobile": "16px",
+                        "unit": "4px"
+                    },
+                    fontFamily: {
+                        "headline-lg": ["Hanken Grotesk"],
+                        "body-sm": ["Inter"],
+                        "label-caps": ["JetBrains Mono"],
+                        "headline-md": ["Hanken Grotesk"],
+                        "body-lg": ["Inter"],
+                        "data-mono": ["JetBrains Mono"]
+                    },
+                    fontSize: {
+                        "headline-lg": ["32px", { lineHeight: "40px", letterSpacing: "-0.02em", fontWeight: "700" }],
+                        "body-sm": ["14px", { lineHeight: "20px", fontWeight: "400" }],
+                        "label-caps": ["12px", { lineHeight: "16px", letterSpacing: "0.05em", fontWeight: "600" }],
+                        "headline-md": ["24px", { lineHeight: "32px", fontWeight: "600" }],
+                        "body-lg": ["16px", { lineHeight: "24px", fontWeight: "400" }],
+                        "data-mono": ["13px", { lineHeight: "18px", fontWeight: "400" }]
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        .panel {
+            background-color: theme('colors.surface-container');
+            border: 1px solid #2A2A2A;
+            border-radius: theme('borderRadius.DEFAULT');
+            padding: theme('spacing.gutter');
+        }
+        .panel-header {
+            border-bottom: 1px solid #2A2A2A;
+            padding-bottom: theme('spacing.unit');
+            margin-bottom: theme('spacing.gutter');
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .status-bar-hp {
+            background: linear-gradient(90deg, #690005 0%, #ffb4ab 100%);
+            box-shadow: inset 0 1px 3px rgba(0,0,0,0.5);
+            transition: width 0.5s ease;
+        }
+        .status-bar-mana {
+            background: linear-gradient(90deg, #001d36 0%, #9fcaff 100%);
+            box-shadow: inset 0 1px 3px rgba(0,0,0,0.5);
+            transition: width 0.5s ease;
+        }
+        .status-bar-cap {
+            background: linear-gradient(90deg, #3c2f00 0%, #f2ca50 100%);
+            box-shadow: inset 0 1px 3px rgba(0,0,0,0.5);
+            transition: width 0.5s ease;
+        }
+        
+        /* Custom Scrollbar for inner tables */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: theme('colors.surface-container-lowest'); }
+        ::-webkit-scrollbar-thumb { background: theme('colors.outline-variant'); border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: theme('colors.outline'); }
+        
+        /* Animation classes */
+        @keyframes pulse-green {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        .status-running {
+            animation: pulse-green 2s infinite;
+        }
+        .chart-line {
+            transition: all 0.3s ease;
+        }
+    </style>
+</head>
+<body class="bg-background text-on-surface font-body-sm flex h-screen overflow-hidden antialiased">
+<!-- SideNavBar -->
+<nav class="bg-surface-container dark:bg-surface-container flex flex-col h-full border-r border-outline-variant py-4 docked h-full w-64 left-0">
+    <div class="px-4 mb-6 flex flex-col items-center">
+        <img alt="TBOT Logo Icon" class="w-16 h-16 mb-2 rounded shadow-lg border border-outline-variant" src="https://lh3.googleusercontent.com/aida/AEtjO1UJuDPfNb-ka5WKhGYXc0DEpV-CAMN0Ic-pq6s09Eu86Ul2T9_PTgWi_dU7qtNuBG1CP5VPiHUAOW4KbgU6aQKdcbc5hKUBBQdTh6StOhKomcYqpELsUm1wJeSwnnP7UWEjwdh-KLPfjSGyzbzQuB4Ejox61Ex0iQRyMVN4dJoPFk6YdVjtk7OZxkZktLEWbcJlUyp_4svIkVMOoypDc4ioJ-gH95yC-lj_J9OJe8L0RCgX_mURGgPvYz8"/>
+        <h1 class="font-headline-md text-headline-md text-primary font-bold">TBOT V1.0.0</h1>
+        <span class="font-label-caps text-label-caps mt-1" id="bot-status-label">Status: <span class="text-error">Offline</span></span>
+    </div>
+    <div class="px-4 mb-6">
+        <button id="btn-start-bot" class="w-full bg-gradient-to-r from-primary to-primary-container text-on-primary font-label-caps text-label-caps font-bold py-3 px-4 rounded hover:brightness-110 transition-all border-t border-white/20 border-b border-black/50 shadow-md">
+            INICIAR BOT
+        </button>
+    </div>
+    <ul class="flex-1 overflow-y-auto px-2 space-y-1">
+        <li>
+            <a class="bg-primary-container text-on-primary-container font-bold rounded-lg my-1 mx-2 p-3 flex items-center gap-3 border-t border-white/10 border-b border-black/50" href="#">
+                <span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">dashboard</span>
+                Dashboard
+            </a>
+        </li>
+        <li>
+            <a class="text-on-surface-variant hover:text-on-surface hover:bg-surface-variant p-3 mx-2 my-1 flex items-center gap-3 rounded-lg transition-all" href="#">
+                <span class="material-symbols-outlined">settings</span>
+                Configurações
+            </a>
+        </li>
+        <li>
+            <a class="text-on-surface-variant hover:text-on-surface hover:bg-surface-variant p-3 mx-2 my-1 flex items-center gap-3 rounded-lg transition-all" href="#">
+                <span class="material-symbols-outlined">directions_run</span>
+                Cavebot
+            </a>
+        </li>
+        <li>
+            <a class="text-on-surface-variant hover:text-on-surface hover:bg-surface-variant p-3 mx-2 my-1 flex items-center gap-3 rounded-lg transition-all" href="#">
+                <span class="material-symbols-outlined">inventory_2</span>
+                Looting
+            </a>
+        </li>
+        <li>
+            <a class="text-on-surface-variant hover:text-on-surface hover:bg-surface-variant p-3 mx-2 my-1 flex items-center gap-3 rounded-lg transition-all" href="#">
+                <span class="material-symbols-outlined">terminal</span>
+                Logs
+            </a>
+        </li>
+        <li>
+            <a class="text-on-surface-variant hover:text-on-surface hover:bg-surface-variant p-3 mx-2 my-1 flex items-center gap-3 rounded-lg transition-all" href="#">
+                <span class="material-symbols-outlined">keyboard</span>
+                Hotkeys
+            </a>
+        </li>
+    </ul>
+    <div class="mt-auto px-2 border-t border-outline-variant pt-4">
+        <ul class="space-y-1">
+            <li>
+                <a class="text-on-surface-variant hover:text-on-surface hover:bg-surface-variant p-3 mx-2 my-1 flex items-center gap-3 rounded-lg transition-all" href="#">
+                    <span class="material-symbols-outlined">help</span>
+                    Suporte
+                </a>
+            </li>
+            <li>
+                <a class="text-on-surface-variant hover:text-on-surface hover:bg-surface-variant p-3 mx-2 my-1 flex items-center gap-3 rounded-lg transition-all" href="#">
+                    <span class="material-symbols-outlined">history</span>
+                    Changelog
+                </a>
+            </li>
+        </ul>
+    </div>
+</nav>
+
+<!-- Main Content Canvas -->
+<main class="flex-1 flex flex-col h-full overflow-hidden bg-background">
+    <!-- TopAppBar -->
+    <header class="bg-surface dark:bg-surface border-b border-outline-variant shadow-sm flex justify-between items-center w-full px-margin-desktop h-16 shrink-0">
+        <div class="font-headline-lg text-headline-lg font-bold text-primary tracking-tight">TBOT CHAT</div>
+        <div class="flex items-center gap-4 text-primary dark:text-primary">
+            <button class="hover:bg-surface-variant transition-colors duration-200 p-2 rounded-full flex items-center justify-center">
+                <span class="material-symbols-outlined">account_circle</span>
+            </button>
+            <button class="hover:bg-surface-variant transition-colors duration-200 p-2 rounded-full flex items-center justify-center">
+                <span class="material-symbols-outlined">settings</span>
+            </button>
+            <button id="btn-stop-bot" class="hover:bg-surface-variant transition-colors duration-200 p-2 rounded-full flex items-center justify-center text-error">
+                <span class="material-symbols-outlined">power_settings_new</span>
+            </button>
+        </div>
+    </header>
+
+    <!-- Dashboard Content Grid -->
+    <div class="flex-1 overflow-y-auto p-margin-desktop">
+        <div class="grid grid-cols-12 gap-4 h-full">
+            <!-- Left Column (Wider) -->
+            <div class="col-span-12 lg:col-span-8 flex flex-col gap-4">
+                <!-- Top Row: Status & Chart -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <!-- Bot Status Panel -->
+                    <div class="panel flex flex-col justify-between">
+                        <div class="panel-header">
+                            <h2 class="font-label-caps text-label-caps text-on-surface-variant">Status do Bot</h2>
+                            <span class="material-symbols-outlined text-outline">smart_toy</span>
+                        </div>
+                        <div class="flex items-center justify-between mb-4">
+                            <div>
+                                <div id="bot-status-text" class="text-error font-headline-md font-bold uppercase tracking-widest">PARADO</div>
+                                <div id="bot-status-subtext" class="text-on-surface-variant text-xs mt-1">Nenhuma rota ativa</div>
+                            </div>
+                            <button id="btn-toggle-bot" class="w-12 h-12 rounded-full bg-surface-variant border border-outline-variant flex items-center justify-center hover:bg-surface-bright transition-colors text-primary">
+                                <span id="btn-toggle-icon" class="material-symbols-outlined text-3xl" style="font-variation-settings: 'FILL' 1;">play_arrow</span>
+                            </button>
+                        </div>
+                        <div class="grid grid-cols-3 gap-2 text-center border-t border-outline-variant pt-4 mt-auto">
+                            <div>
+                                <div id="stat-exp-hour" class="font-data-mono text-data-mono text-on-surface font-semibold">0</div>
+                                <div class="text-[10px] text-on-surface-variant uppercase">Exp por Hora</div>
+                            </div>
+                            <div>
+                                <div id="stat-loot-hour" class="font-data-mono text-data-mono text-primary font-semibold">0</div>
+                                <div class="text-[10px] text-on-surface-variant uppercase">Loot por Hora</div>
+                            </div>
+                            <div>
+                                <div id="stat-time-online" class="font-data-mono text-data-mono text-on-surface font-semibold">00:00:00</div>
+                                <div class="text-[10px] text-on-surface-variant uppercase">Tempo Online</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Real-time Activity Panel -->
+                    <div class="panel">
+                        <div class="panel-header">
+                            <h2 class="font-label-caps text-label-caps text-on-surface-variant">Atividade em Tempo Real</h2>
+                            <span class="material-symbols-outlined text-outline">monitoring</span>
+                        </div>
+                        <div class="h-32 w-full relative flex items-end justify-between px-2 pt-4">
+                            <!-- Dynamic Line Chart using SVG -->
+                            <svg id="activity-chart" class="absolute inset-0 w-full h-full" preserveAspectRatio="none" viewBox="0 0 100 100">
+                                <path id="chart-path" d="M0,90 Q10,80 20,85 T40,60 T60,70 T80,30 T100,20 L100,100 L0,100 Z" fill="rgba(212, 175, 55, 0.1)" stroke="#d4af37" stroke-width="1.5" vector-effect="non-scaling-stroke" class="chart-line"></path>
+                            </svg>
+                            <div class="absolute right-4 top-2 text-right">
+                                <div class="font-data-mono text-data-mono text-on-surface">Exp/h: <span id="chart-exp" class="text-primary font-bold">0</span></div>
+                                <div class="font-data-mono text-data-mono text-on-surface mt-1">Loot/h: <span id="chart-loot" class="text-primary font-bold">0</span></div>
+                            </div>
+                            <!-- X Axis Labels -->
+                            <div class="w-full flex justify-between text-[10px] text-on-surface-variant border-t border-outline-variant pt-1 mt-auto relative z-10">
+                                <span>00:00</span>
+                                <span>00:15</span>
+                                <span>00:30</span>
+                                <span>00:45</span>
+                                <span>01:00</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Hunting List Panel -->
+                <div class="panel flex-1 flex flex-col min-h-[250px]">
+                    <div class="panel-header">
+                        <h2 class="font-label-caps text-label-caps text-on-surface-variant">Lista de Caçadas</h2>
+                        <span class="material-symbols-outlined text-outline">list_alt</span>
+                    </div>
+                    <div class="flex-1 overflow-auto -mx-gutter px-gutter">
+                        <table class="w-full text-left font-data-mono text-data-mono whitespace-nowrap">
+                            <thead class="sticky top-0 bg-surface-container z-10">
+                                <tr class="text-on-surface-variant border-b border-outline-variant">
+                                    <th class="py-2 font-normal">Nome</th>
+                                    <th class="py-2 font-normal">Criaturas</th>
+                                    <th class="py-2 font-normal">Local</th>
+                                    <th class="py-2 font-normal text-right">Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="hunting-list-body">
+                                <!-- Dynamic content will be inserted here -->
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="pt-4 mt-2 border-t border-outline-variant flex gap-2 justify-end">
+                        <button id="btn-remove-hunt" class="px-3 py-1.5 border border-outline-variant text-on-surface-variant rounded hover:bg-surface-variant hover:text-on-surface transition-colors font-label-caps text-label-caps">Remover</button>
+                        <button id="btn-edit-hunt" class="px-3 py-1.5 border border-outline-variant text-on-surface-variant rounded hover:bg-surface-variant hover:text-on-surface transition-colors font-label-caps text-label-caps">Editar</button>
+                        <button id="btn-new-hunt" class="px-3 py-1.5 bg-surface-variant border border-primary text-primary rounded hover:bg-primary hover:text-on-primary transition-colors font-label-caps text-label-caps font-bold">Nova Caçada</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Column (Narrower) -->
+            <div class="col-span-12 lg:col-span-4 flex flex-col gap-4">
+                <!-- Character Info Panel -->
+                <div class="panel">
+                    <div class="panel-header">
+                        <h2 class="font-label-caps text-label-caps text-on-surface-variant">Informações do Personagem</h2>
+                        <span class="material-symbols-outlined text-outline">person</span>
+                    </div>
+                    <div class="flex gap-4 mb-4">
+                        <div class="w-16 h-16 bg-surface-dim border border-outline-variant rounded flex items-center justify-center shrink-0">
+                            <span class="material-symbols-outlined text-4xl text-outline">account_box</span>
+                        </div>
+                        <div class="flex-1">
+                            <div id="char-name" class="font-data-mono text-data-mono font-bold text-on-surface mb-1">Knight Supremo</div>
+                            <div class="text-xs text-on-surface-variant flex justify-between mb-0.5"><span>Level:</span> <span id="char-level" class="text-on-surface font-data-mono">250</span></div>
+                            <div class="text-xs text-on-surface-variant flex justify-between"><span>Vocação:</span> <span id="char-vocation" class="text-on-surface">Elder Druid</span></div>
+                        </div>
+                    </div>
+                    <!-- Vitals -->
+                    <div class="space-y-3 mb-4">
+                        <div>
+                            <div class="flex justify-between text-[10px] font-label-caps mb-1">
+                                <span class="text-error">Vida</span>
+                                <span id="hp-percent" class="text-on-surface">100%</span>
+                            </div>
+                            <div class="w-full bg-surface-dim h-2 rounded-full overflow-hidden border border-outline-variant">
+                                <div id="hp-bar" class="status-bar-hp h-full w-full rounded-full"></div>
+                            </div>
+                        </div>
+                        <div>
+                            <div class="flex justify-between text-[10px] font-label-caps mb-1">
+                                <span class="text-secondary">Mana</span>
+                                <span id="mana-percent" class="text-on-surface">100%</span>
+                            </div>
+                            <div class="w-full bg-surface-dim h-2 rounded-full overflow-hidden border border-outline-variant">
+                                <div id="mana-bar" class="status-bar-mana h-full w-full rounded-full"></div>
+                            </div>
+                        </div>
+                        <div>
+                            <div class="flex justify-between text-[10px] font-label-caps mb-1">
+                                <span class="text-primary">Capacidade</span>
+                                <span id="cap-percent" class="text-on-surface">100%</span>
+                            </div>
+                            <div class="w-full bg-surface-dim h-2 rounded-full overflow-hidden border border-outline-variant">
+                                <div id="cap-bar" class="status-bar-cap h-full w-full rounded-full"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Stats Grid -->
+                    <div class="grid grid-cols-2 gap-x-4 gap-y-2 text-xs font-data-mono border-t border-outline-variant pt-4">
+                        <div class="flex justify-between"><span class="text-on-surface-variant">Magic Level</span><span id="stat-ml" class="text-on-surface">105</span></div>
+                        <div class="flex justify-between"><span class="text-on-surface-variant">Shielding</span><span id="stat-shield" class="text-on-surface">35</span></div>
+                        <div class="flex justify-between"><span class="text-on-surface-variant">Sword F.</span><span id="stat-sword" class="text-on-surface">25</span></div>
+                        <div class="flex justify-between"><span class="text-on-surface-variant">Pesca</span><span id="stat-fish" class="text-on-surface">10</span></div>
+                        <div class="col-span-2 flex justify-between mt-1"><span class="text-on-surface-variant">Experiência</span><span id="stat-exp" class="text-primary">254.967.654</span></div>
+                    </div>
+                </div>
+
+                <!-- Recent Notifications / Logs Panel -->
+                <div class="panel flex-1 flex flex-col min-h-[250px]">
+                    <div class="panel-header">
+                        <h2 class="font-label-caps text-label-caps text-on-surface-variant">Notificações Recentes</h2>
+                        <span class="material-symbols-outlined text-outline">notifications</span>
+                    </div>
+                    <div id="notifications-list" class="flex-1 overflow-y-auto space-y-2 font-data-mono text-data-mono text-xs">
+                        <!-- Dynamic notifications will be inserted here -->
+                    </div>
+                    <button id="btn-view-logs" class="w-full mt-4 py-2 text-center text-xs font-label-caps text-on-surface-variant hover:text-primary border border-transparent hover:border-outline-variant rounded transition-colors bg-surface-dim">
+                        Ver Logs Completos
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</main>
+
+<script>
+// ============================================
+// TBOT CHAT - Dashboard Funcional
+// ============================================
+
+// Estado da Aplicação
+const AppState = {
+    isRunning: false,
+    startTime: null,
+    selectedHunt: null,
+    character: {
+        name: 'Knight Supremo',
+        level: 250,
+        vocation: 'Elder Druid',
+        hp: 100,
+        maxHp: 2500,
+        mana: 100,
+        maxMana: 1800,
+        cap: 100,
+        maxCap: 5000,
+        ml: 105,
+        shielding: 35,
+        sword: 25,
+        fishing: 10,
+        exp: 254967654
+    },
+    stats: {
+        expPerHour: 0,
+        lootPerHour: 0,
+        totalTime: 0
+    },
+    huntingList: [
+        { id: 1, name: 'Oramond West', creatures: 'Quaras, Glooth', location: 'Oramond', status: 'active' },
+        { id: 2, name: 'Werelions', creatures: 'Werelions', location: 'Darashia', status: 'inactive' },
+        { id: 3, name: 'Glooth Bandits', creatures: 'Bandits', location: 'Oramond', status: 'inactive' },
+        { id: 4, name: 'Edron Vampires', creatures: 'Vampires', location: 'Edron', status: 'inactive' }
+    ],
+    notifications: [],
+    chartData: []
+};
+
+// Elementos DOM
+const elements = {
+    botStatusLabel: document.getElementById('bot-status-label'),
+    botStatusText: document.getElementById('bot-status-text'),
+    botStatusSubtext: document.getElementById('bot-status-subtext'),
+    btnStartBot: document.getElementById('btn-start-bot'),
+    btnStopBot: document.getElementById('btn-stop-bot'),
+    btnToggleBot: document.getElementById('btn-toggle-bot'),
+    btnToggleIcon: document.getElementById('btn-toggle-icon'),
+    statExpHour: document.getElementById('stat-exp-hour'),
+    statLootHour: document.getElementById('stat-loot-hour'),
+    statTimeOnline: document.getElementById('stat-time-online'),
+    chartPath: document.getElementById('chart-path'),
+    chartExp: document.getElementById('chart-exp'),
+    chartLoot: document.getElementById('chart-loot'),
+    huntingListBody: document.getElementById('hunting-list-body'),
+    charName: document.getElementById('char-name'),
+    charLevel: document.getElementById('char-level'),
+    charVocation: document.getElementById('char-vocation'),
+    hpPercent: document.getElementById('hp-percent'),
+    hpBar: document.getElementById('hp-bar'),
+    manaPercent: document.getElementById('mana-percent'),
+    manaBar: document.getElementById('mana-bar'),
+    capPercent: document.getElementById('cap-percent'),
+    capBar: document.getElementById('cap-bar'),
+    statMl: document.getElementById('stat-ml'),
+    statShield: document.getElementById('stat-shield'),
+    statSword: document.getElementById('stat-sword'),
+    statFish: document.getElementById('stat-fish'),
+    statExp: document.getElementById('stat-exp'),
+    notificationsList: document.getElementById('notifications-list'),
+    btnRemoveHunt: document.getElementById('btn-remove-hunt'),
+    btnEditHunt: document.getElementById('btn-edit-hunt'),
+    btnNewHunt: document.getElementById('btn-new-hunt'),
+    btnViewLogs: document.getElementById('btn-view-logs')
+};
+
+// Utilitários
+function formatNumber(num) {
+    return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+}
+
+function formatTime(seconds) {
+    const hrs = Math.floor(seconds / 3600);
+    const mins = Math.floor((seconds % 3600) / 60);
+    const secs = seconds % 60;
+    return `${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+}
+
+function getCurrentTime() {
+    const now = new Date();
+    return now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+}
+
+// Adicionar notificação
+function addNotification(message, type = 'info') {
+    const notification = {
+        time: getCurrentTime(),
+        message: message,
+        type: type,
+        id: Date.now()
+    };
+    
+    AppState.notifications.unshift(notification);
+    if (AppState.notifications.length > 20) {
+        AppState.notifications.pop();
+    }
+    
+    renderNotifications();
+}
+
+// Renderizar notificações
+function renderNotifications() {
+    elements.notificationsList.innerHTML = AppState.notifications.map(notif => {
+        let colorClass = 'text-on-surface';
+        switch(notif.type) {
+            case 'success': colorClass = 'text-emerald-400'; break;
+            case 'warning': colorClass = 'text-primary'; break;
+            case 'error': colorClass = 'text-error'; break;
+            case 'info': colorClass = 'text-secondary'; break;
+        }
+        return `
+            <div class="flex gap-2">
+                <span class="text-outline-variant shrink-0">${notif.time}</span>
+                <span class="${colorClass}">${notif.message}</span>
+            </div>
+        `;
+    }).join('');
+}
+
+// Renderizar lista de caçadas
+function renderHuntingList() {
+    elements.huntingListBody.innerHTML = AppState.huntingList.map(hunt => {
+        const isSelected = AppState.selectedHunt === hunt.id;
+        const statusClass = hunt.status === 'active' ? 'text-emerald-400 font-bold' : 'text-outline';
+        const statusText = hunt.status === 'active' ? 'Ativa' : 'Inativa';
+        const rowClass = isSelected ? 'bg-surface-dim/30' : '';
+        
+        return `
+            <tr class="border-b border-surface-variant hover:bg-surface-bright transition-colors cursor-pointer ${rowClass}" data-hunt-id="${hunt.id}">
+                <td class="py-2 text-on-surface">${hunt.name}</td>
+                <td class="py-2 text-on-surface-variant">${hunt.creatures}</td>
+                <td class="py-2 text-on-surface-variant">${hunt.location}</td>
+                <td class="py-2 text-right"><span class="${statusClass}">${statusText}</span></td>
+            </tr>
+        `;
+    }).join('');
+    
+    // Adicionar event listeners nas linhas
+    document.querySelectorAll('#hunting-list-body tr').forEach(row => {
+        row.addEventListener('click', () => {
+            const huntId = parseInt(row.dataset.huntId);
+            selectHunt(huntId);
+        });
+    });
+}
+
+// Selecionar caçada
+function selectHunt(huntId) {
+    AppState.selectedHunt = huntId;
+    const hunt = AppState.huntingList.find(h => h.id === huntId);
+    if (hunt && AppState.isRunning) {
+        addNotification(`Rota selecionada: ${hunt.name}`, 'info');
+    }
+    renderHuntingList();
+}
+
+// Atualizar UI do bot
+function updateBotUI() {
+    if (AppState.isRunning) {
+        elements.botStatusLabel.innerHTML = 'Status: <span class="text-emerald-400 status-running">Rodando</span>';
+        elements.botStatusText.textContent = 'RODANDO';
+        elements.botStatusText.className = 'text-emerald-400 font-headline-md font-bold uppercase tracking-widest status-running';
+        
+        const activeHunt = AppState.huntingList.find(h => h.id === AppState.selectedHunt);
+        elements.botStatusSubtext.textContent = activeHunt ? `Caçando: ${activeHunt.name}` : 'Sem rota selecionada';
+        
+        elements.btnToggleIcon.textContent = 'pause';
+        elements.btnStartBot.textContent = 'BOT RODANDO';
+        elements.btnStartBot.classList.add('from-error', 'to-error-container', 'text-on-error-container');
+        elements.btnStartBot.classList.remove('from-primary', 'to-primary-container', 'text-on-primary');
+    } else {
+        elements.botStatusLabel.innerHTML = 'Status: <span class="text-error">Parado</span>';
+        elements.botStatusText.textContent = 'PARADO';
+        elements.botStatusText.className = 'text-error font-headline-md font-bold uppercase tracking-widest';
+        elements.botStatusSubtext.textContent = 'Nenhuma rota ativa';
+        
+        elements.btnToggleIcon.textContent = 'play_arrow';
+        elements.btnStartBot.textContent = 'INICIAR BOT';
+        elements.btnStartBot.classList.remove('from-error', 'to-error-container', 'text-on-error-container');
+        elements.btnStartBot.classList.add('from-primary', 'to-primary-container', 'text-on-primary');
+    }
+}
+
+// Atualizar estatísticas
+function updateStats() {
+    if (AppState.isRunning && AppState.startTime) {
+        const elapsed = Math.floor((Date.now() - AppState.startTime) / 1000);
+        AppState.stats.totalTime = elapsed;
+        
+        // Simular ganho de experiência e loot
+        AppState.stats.expPerHour = Math.floor(200000 + Math.random() * 100000);
+        AppState.stats.lootPerHour = Math.floor(50000 + Math.random() * 50000);
+        
+        elements.statExpHour.textContent = formatNumber(AppState.stats.expPerHour);
+        elements.statLootHour.textContent = formatNumber(AppState.stats.lootPerHour);
+        elements.statTimeOnline.textContent = formatTime(elapsed);
+        
+        // Atualizar gráfico
+        updateChart();
+        
+        // Atualizar experiência do personagem
+        AppState.character.exp += Math.floor(AppState.stats.expPerHour / 3600);
+        elements.statExp.textContent = formatNumber(AppState.character.exp);
+    }
+}
+
+// Atualizar gráfico
+function updateChart() {
+    // Adicionar novo ponto ao gráfico
+    const expValue = AppState.stats.expPerHour / 10000;
+    const normalizedValue = Math.min(100, Math.max(10, 100 - (expValue / 5)));
+    
+    AppState.chartData.push(normalizedValue);
+    if (AppState.chartData.length > 20) {
+        AppState.chartData.shift();
+    }
+    
+    // Gerar path do SVG
+    const width = 100;
+    const step = width / (AppState.chartData.length - 1 || 1);
+    
+    let pathD = `M0,${AppState.chartData[0] || 90}`;
+    AppState.chartData.forEach((value, index) => {
+        if (index > 0) {
+            const x = index * step;
+            pathD += ` L${x},${value}`;
+        }
+    });
+    
+    pathD += ` L100,100 L0,100 Z`;
+    elements.chartPath.setAttribute('d', pathD);
+    
+    // Atualizar valores do chart
+    elements.chartExp.textContent = formatNumber(AppState.stats.expPerHour);
+    elements.chartLoot.textContent = formatNumber(AppState.stats.lootPerHour);
+}
+
+// Simular vitais do personagem
+function simulateVitals() {
+    if (AppState.isRunning) {
+        // Simular pequenas variações nos vitais
+        const variation = (Math.random() - 0.5) * 2;
+        AppState.character.hp = Math.min(100, Math.max(70, AppState.character.hp + variation));
+        AppState.character.mana = Math.min(100, Math.max(60, AppState.character.mana + variation * 1.5));
+        AppState.character.cap = Math.max(0, AppState.character.cap - 0.01);
+        
+        // Atualizar barras
+        elements.hpPercent.textContent = `${Math.floor(AppState.character.hp)}%`;
+        elements.hpBar.style.width = `${AppState.character.hp}%`;
+        
+        elements.manaPercent.textContent = `${Math.floor(AppState.character.mana)}%`;
+        elements.manaBar.style.width = `${AppState.character.mana}%`;
+        
+        elements.capPercent.textContent = `${Math.floor(AppState.character.cap)}%`;
+        elements.capBar.style.width = `${AppState.character.cap}%`;
+        
+        // Se HP muito baixo, adicionar notificação
+        if (AppState.character.hp < 30 && Math.random() > 0.95) {
+            addNotification('HP crítico! Considerando retreat...', 'error');
+        }
+    }
+}
+
+// Iniciar bot
+function startBot() {
+    if (!AppState.selectedHunt) {
+        // Selecionar primeira hunt ativa ou a primeira da lista
+        const activeHunt = AppState.huntingList.find(h => h.status === 'active');
+        if (activeHunt) {
+            AppState.selectedHunt = activeHunt.id;
+        } else {
+            AppState.selectedHunt = AppState.huntingList[0].id;
+        }
+        renderHuntingList();
+    }
+    
+    AppState.isRunning = true;
+    AppState.startTime = Date.now();
+    AppState.chartData = [];
+    
+    addNotification('Bot iniciado com sucesso!', 'success');
+    const hunt = AppState.huntingList.find(h => h.id === AppState.selectedHunt);
+    if (hunt) {
+        addNotification(`Iniciando rota: ${hunt.name}`, 'info');
+    }
+    
+    updateBotUI();
+}
+
+// Parar bot
+function stopBot() {
+    AppState.isRunning = false;
+    AppState.startTime = null;
+    
+    addNotification('Bot parado pelo usuário', 'warning');
+    
+    // Resetar estatísticas após alguns segundos
+    setTimeout(() => {
+        if (!AppState.isRunning) {
+            AppState.stats.expPerHour = 0;
+            AppState.stats.lootPerHour = 0;
+            elements.statExpHour.textContent = '0';
+            elements.statLootHour.textContent = '0';
+            elements.chartExp.textContent = '0';
+            elements.chartLoot.textContent = '0';
+        }
+    }, 3000);
+    
+    updateBotUI();
+}
+
+// Toggle bot
+function toggleBot() {
+    if (AppState.isRunning) {
+        stopBot();
+    } else {
+        startBot();
+    }
+}
+
+// Nova caçada
+function newHunt() {
+    const name = prompt('Nome da caçada:');
+    if (!name) return;
+    
+    const creatures = prompt('Criaturas:');
+    const location = prompt('Local:');
+    
+    const newHunt = {
+        id: Date.now(),
+        name: name,
+        creatures: creatures || 'Não especificado',
+        location: location || 'Não especificado',
+        status: 'inactive'
+    };
+    
+    AppState.huntingList.push(newHunt);
+    renderHuntingList();
+    addNotification(`Nova caçada criada: ${name}`, 'success');
+}
+
+// Editar caçada
+function editHunt() {
+    if (!AppState.selectedHunt) {
+        alert('Selecione uma caçada para editar');
+        return;
+    }
+    
+    const hunt = AppState.huntingList.find(h => h.id === AppState.selectedHunt);
+    if (!hunt) return;
+    
+    const name = prompt('Nome da caçada:', hunt.name);
+    if (!name) return;
+    
+    const creatures = prompt('Criaturas:', hunt.creatures);
+    const location = prompt('Local:', hunt.location);
+    
+    hunt.name = name;
+    hunt.creatures = creatures || hunt.creatures;
+    hunt.location = location || hunt.location;
+    
+    renderHuntingList();
+    addNotification(`Caçada editada: ${name}`, 'info');
+}
+
+// Remover caçada
+function removeHunt() {
+    if (!AppState.selectedHunt) {
+        alert('Selecione uma caçada para remover');
+        return;
+    }
+    
+    const hunt = AppState.huntingList.find(h => h.id === AppState.selectedHunt);
+    if (!hunt) return;
+    
+    if (confirm(`Tem certeza que deseja remover "${hunt.name}"?`)) {
+        AppState.huntingList = AppState.huntingList.filter(h => h.id !== AppState.selectedHunt);
+        AppState.selectedHunt = null;
+        renderHuntingList();
+        addNotification(`Caçada removida: ${hunt.name}`, 'warning');
+    }
+}
+
+// Ver logs completos
+function viewLogs() {
+    const logsContent = AppState.notifications.map(n => 
+        `[${n.time}] ${n.message}`
+    ).join('\n');
+    
+    alert('LOGS COMPLETOS:\n\n' + logsContent);
+}
+
+// Inicializar personagem
+function initCharacter() {
+    elements.charName.textContent = AppState.character.name;
+    elements.charLevel.textContent = AppState.character.level;
+    elements.charVocation.textContent = AppState.character.vocation;
+    elements.statMl.textContent = AppState.character.ml;
+    elements.statShield.textContent = AppState.character.shielding;
+    elements.statSword.textContent = AppState.character.sword;
+    elements.statFish.textContent = AppState.character.fishing;
+    elements.statExp.textContent = formatNumber(AppState.character.exp);
+    
+    elements.hpBar.style.width = `${AppState.character.hp}%`;
+    elements.manaBar.style.width = `${AppState.character.mana}%`;
+    elements.capBar.style.width = `${AppState.character.cap}%`;
+}
+
+// Event Listeners
+elements.btnStartBot.addEventListener('click', startBot);
+elements.btnStopBot.addEventListener('click', stopBot);
+elements.btnToggleBot.addEventListener('click', toggleBot);
+elements.btnNewHunt.addEventListener('click', newHunt);
+elements.btnEditHunt.addEventListener('click', editHunt);
+elements.btnRemoveHunt.addEventListener('click', removeHunt);
+elements.btnViewLogs.addEventListener('click', viewLogs);
+
+// Inicialização
+function init() {
+    initCharacter();
+    renderHuntingList();
+    renderNotifications();
+    updateBotUI();
+    
+    // Adicionar notificação inicial
+    addNotification('Bem-vindo ao TBOT CHAT!', 'success');
+    addNotification('Sistema inicializado', 'info');
+    
+    // Loop de atualização (1 segundo)
+    setInterval(() => {
+        updateStats();
+        simulateVitals();
+    }, 1000);
+    
+    // Loop de atualização do gráfico (2 segundos)
+    setInterval(() => {
+        if (AppState.isRunning) {
+            updateChart();
+        }
+    }, 2000);
+}
+
+// Iniciar aplicação
+init();
+</script>
+</body>
+</html>
