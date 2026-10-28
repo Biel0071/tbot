@@ -81,9 +81,11 @@ export class RuntimeManager {
 
   health() {
     return {
-      runtime: this.engine ? 'online' : 'offline',
+      // The runtime process itself is online as long as the manager exists —
+      // even before a bot session starts (bot: 'stopped', state: OFFLINE).
+      runtime: 'online',
       bot: this.engine ? this.engine.health().bot : 'stopped',
-      state: this.engine?.machine.current ?? 'OFFLINE',
+      state: this.engine?.machine.status() ?? 'OFFLINE',
       uptime: this.startedAt ? Math.floor((Date.now() - this.startedAt) / 1000) : 0,
       lastHeartbeat: this.lastHeartbeat,
       errors: this.errors,

@@ -54,9 +54,11 @@ console.log('========================================');
 console.log('T BOT MVP VALIDATION');
 console.log('========================================');
 
-// START RUNTIME — real server on a free port (port 0)
+// START RUNTIME — real server on a free port (port 0).
+// NOTE: createServer() already calls server.listen() internally, so we must NOT
+// call listen again (ERR_SERVER_ALREADY_LISTEN). Just wait until it's listening.
 const ctx = createServer({ port: 0 });
-await new Promise((resolve) => ctx.server.listen(0, '127.0.0.1', resolve));
+if (!ctx.server.listening) await new Promise((resolve) => ctx.server.once('listening', resolve));
 BASE = `http://127.0.0.1:${ctx.server.address().port}`;
 console.log(`runtime listening on ${BASE}\n`);
 
@@ -119,15 +121,15 @@ try {
 
   // VERIFY TARGET / COMBAT / LOOT
   await step('Target / Combat / Loot', async () => {
+    // Wait until a full kill+loot cycle happened (avoids race between
+    // TARGET_KILLED and the subsequent LOOT_COLLECTED event).
     await waitFor(async () => {
-      const st = await get('/api/statistics');
-      return (st.kills ?? 0) > 0;
-    }, 45000, 'first kill');
-    const evs = await get('/api/events?limit=500');
-    const types = new Set(evs.map((e) => e.type));
-    if (!types.has('TARGET_SELECTED')) throw new Error('no TARGET_SELECTED event');
-    if (!types.has('TARGET_KILLED')) throw new Error('no TARGET_KILLED event');
-    if (!types.has('LOOT_COLLECTED')) throw new Error('no LOOT_COLLECTED event yet (may follow shortly)');
+      const evs = await get('/api/events?limit=500');
+      const types = new Set(evs.map((e) => e.type));
+      return types.has('TARGET_SELECTED') && types.has('TARGET_KILLED') && types.has('LOOT_COLLECTED');
+    }, 45000, 'TARGET_SELECTED + TARGET_KILLED + LOOT_COLLECTED events');
+    const st = await get('/api/statistics');
+    if (!(st.kills > 0)) throw new Error(`kills=${st.kills}`);
     return 'kill + loot recorded';
   });
 

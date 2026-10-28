@@ -1,0 +1,22 @@
+{
+  "name": "character-1",
+  "hunt": {
+    "name": "Solo Hunt",
+    "route": "main-hunt",
+    "minHp": 60,
+    "minMana": 30,
+    "minPotions": 50,
+    "maxCapacity": 85,
+    "refill": {
+      "enabled": true
+    },
+    "bless": {
+      "required": true
+    },
+    "emergency": {
+      "hp": 30,
+      "enabled": true
+    }
+  },
+  "debug": false
+}

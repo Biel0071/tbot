@@ -57,8 +57,11 @@ describe('Full hunt cycle integration (§38 criteria)', () => {
     for (let i = 0; i < 400; i++) {
       await wait(25);
       seen.add(mgr.status().state);
-      // drain potions mid-run to force the refill path once seen enough hunting
-      if (seen.has(BotStates.LOOT) && worldRef.player.inventory.healthPotion > 5) {
+      // drain potions mid-run to force the refill path once seen enough hunting.
+      // !seen.has(EVALUATE) guard: after the refill pipeline bought potions, we
+      // must NOT keep zeroing them every tick — otherwise the bot gets stuck in
+      // REFILL and never reaches SELL_LOOT.
+      if (seen.has(BotStates.LOOT) && !seen.has(BotStates.EVALUATE) && worldRef.player.inventory.healthPotion > 5) {
         worldRef.player.inventory.healthPotion = 2;
         worldRef.player.inventory.manaPotion = 2;
         worldRef.player.gold = 20_000;
