@@ -301,3 +301,96 @@ describe('Adapter Win32 — comportamento fora do Vitest é honesto (sem cache f
     expect(a.getLearning().summary.clicks).toBe(2);
   });
 });
+
+describe('Preview do cliente REAL — /ui/app.js 200 OK + PNG real >25KB', () => {
+  it('GET /ui/app.js responde 200 OK com Cache-Control: no-store', async () => {
+    const r = await request('GET', '/ui/app.js');
+    expect(r.status).toBe(200);
+    expect(r.headers['content-type']).toContain('javascript');
+    expect(r.headers['cache-control']).toContain('no-store');
+    // O app.js servido é exatamente o da UI central (logo interativa)
+    expect(r.text).toContain('centerLogoLauncher');
+    expect(r.text).toContain('/api/client/launch');
+  });
+
+  it('captureRealClientPng é no-op em VITEST===true (SVG preservado)', () => {
+    const srv = require(path.join(ROOT, 'runtime', 'api', 'server.js'));
+    process.env.VITEST = 'true';
+    expect(srv.captureRealClientPng()).toBeNull();
+  });
+
+  it('PNG real >25KB do cache local é servido como image/png fora do Vitest', () => {
+    const srv = require(path.join(ROOT, 'runtime', 'api', 'server.js'));
+    const fsx = require('fs');
+    // Gera um PNG sintético >25KB no cache local de captura (data/client-capture/)
+    const dir = path.join(ROOT, 'data', 'client-capture');
+    fsx.mkdirSync(dir, { recursive: true });
+    const png = buildBigPng(30 * 1024);
+    fsx.writeFileSync(srv.REAL_CLIENT_PNG, png);
+    try {
+      delete process.env.VITEST; // modo runtime real
+      const buf = srv.captureRealClientPng();
+      expect(Buffer.isBuffer(buf)).toBe(true);
+      expect(buf.length).toBeGreaterThan(srv.MIN_REAL_FRAME_BYTES);
+      // assinatura PNG
+      expect(buf[0]).toBe(0x89);
+      expect(buf.slice(1, 4).toString('latin1')).toBe('PNG');
+    } finally {
+      process.env.VITEST = 'true'; // devolve o modo determinístico dos testes
+      try { fsx.unlinkSync(srv.REAL_CLIENT_PNG); } catch (_e) { /* ignore */ }
+    }
+  });
+});
+
+// Utilitário: PNG válido com ruído pseudoaleatório suficiente para >N bytes
+function buildBigPng(minBytes) {
+  const zlib = require('zlib');
+  const width = 220;
+  const height = 160;
+  // dados RAW: filtro 0 + pixels pseudoaleatórios (comprimem pouco)
+  const raw = Buffer.alloc(width * height * 3 + height);
+  let seed = 1337;
+  for (let i = 0; i < raw.length; i++) {
+    seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+    raw[i] = (seed >> 9) & 0xff;
+  }
+  for (let y = 0; y < height; y++) raw[y * (width * 3 + 1)] = 0;
+
+  const chunk = (type, data) => {
+    const len = Buffer.alloc(4);
+    len.writeUInt32BE(data.length);
+    const t = Buffer.from(type, 'latin1');
+    const crcBuf = Buffer.concat([t, data]);
+    const crc = Buffer.alloc(4);
+    crc.writeUInt32BE(crc32(crcBuf) >>> 0);
+    return Buffer.concat([len, t, data, crc]);
+  };
+
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(width, 0);
+  ihdr.writeUInt32BE(height, 4);
+  ihdr[8] = 8; // depth
+  ihdr[9] = 2; // color type RGB
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    chunk('IHDR', ihdr),
+    chunk('IDAT', zlib.deflateSync(raw, { level: 0 })),
+    chunk('IEND', Buffer.alloc(0)),
+  ]);
+}
+
+function crc32(buf) {
+  let c;
+  const table = crc32.table || (crc32.table = (() => {
+    const t = [];
+    for (let n = 0; n < 256; n++) {
+      c = n;
+      for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+      t[n] = c >>> 0;
+    }
+    return t;
+  })());
+  c = 0xffffffff;
+  for (let i = 0; i < buf.length; i++) c = table[(c ^ buf[i]) & 0xff] ^ (c >>> 8);
+  return c >>> 0;
+}

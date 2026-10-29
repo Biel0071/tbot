@@ -75,3 +75,4 @@ node_modules/
 data/*.log
 data/runtime-status.json
 data/rubinot_win32_state.json
+data/client-capture/

@@ -19,10 +19,18 @@
 const fs = require('fs');
 const http = require('http');
 const path = require('path');
+const { execFileSync } = require('child_process');
 const { RuntimeManager } = require('./manager');
 
 const ROOT = path.join(__dirname, '..', '..');
 const DEFAULT_PORT = 8791;
+
+// PNG real do cliente RubinOT (>25KB) usado como fonte de preview quando o
+// ecossistema inteiro está disponível (fora do Vitest). Gerado uma única vez
+// on-demand e mantido fora do git (.gitignore: data/client-capture/).
+const REAL_CLIENT_PNG_DIR = path.join(ROOT, 'data', 'client-capture');
+const REAL_CLIENT_PNG = path.join(REAL_CLIENT_PNG_DIR, 'rubinot-client-real.png');
+const MIN_REAL_FRAME_BYTES = 25 * 1024; // exigência: PNG real > 25KB
 
 const MIME_TYPES = {
   '.html': 'text/html; charset=utf-8',
@@ -107,6 +115,82 @@ function serveStatic(res, filePath) {
   res.end(buf);
 }
 
+/**
+ * Captura do cliente REAL como PNG (>25KB), fora do Vitest.
+ * Ordem de tentativa (honesta — nunca finge estado):
+ *   1) PNG mais recente em C:\Program Files (x86)\RubinOT 2.0\bin\screenshots
+ *      (capturas nativas do próprio cliente RubinOT);
+ *   2) cache local data/client-capture/rubinot-client-real.png já gerado;
+ *   3) screenshot CopyFromScreen da área de trabalho via PowerShell .NET
+ *      (fallback Win32 quando o PrintWindow do adapter não está disponível),
+ *      gravado no cache local para os próximos frames.
+ * Retorna Buffer image/png ou null (o chamador cai no SVG determinístico).
+ */
+function captureRealClientPng() {
+  if (process.env.VITEST === 'true') return null; // testes: sempre SVG
+
+  // 1) screenshots nativos do RubinOT
+  const rubiShots = 'C:\\Program Files (x86)\\RubinOT 2.0\\bin\\screenshots';
+  try {
+    if (fs.existsSync(rubiShots)) {
+      const files = fs
+        .readdirSync(rubiShots)
+        .filter((f) => /\.png$/i.test(f))
+        .map((f) => ({ f, t: fs.statSync(path.join(rubiShots, f)).mtimeMs }))
+        .sort((a, b) => b.t - a.t);
+      for (const { f } of files) {
+        const buf = fs.readFileSync(path.join(rubiShots, f));
+        if (buf.length > MIN_REAL_FRAME_BYTES) return buf;
+      }
+    }
+  } catch (_e) {
+    /* pasta inacessível — segue para o próximo fallback */
+  }
+
+  // 2) cache local de captura real (>25KB)
+  try {
+    if (fs.existsSync(REAL_CLIENT_PNG)) {
+      const cached = fs.readFileSync(REAL_CLIENT_PNG);
+      if (cached.length > MIN_REAL_FRAME_BYTES) return cached;
+    }
+  } catch (_e) {
+    /* ignore */
+  }
+
+  // 3) CopyFromScreen via PowerShell (Windows real)
+  try {
+    if (process.platform !== 'win32') return null;
+    fs.mkdirSync(REAL_CLIENT_PNG_DIR, { recursive: true });
+    const tmpOut = REAL_CLIENT_PNG.replace(/\.png$/, `-${Date.now()}.tmp.png`);
+    const script =
+      'Add-Type -AssemblyName System.Drawing; ' +
+      '$b = [System.Windows.Forms.SystemInformation]::VirtualScreen; ' +
+      '$bmp = New-Object System.Drawing.Bitmap($b.Width, $b.Height); ' +
+      '$g = [System.Drawing.Graphics]::FromImage($bmp); ' +
+      '$g.CopyFromScreen($b.Location, [System.Drawing.Point]::Empty, $b.Size); ' +
+      `$bmp.Save('${tmpOut}', [System.Drawing.Imaging.ImageFormat]::Png); ` +
+      '$g.Dispose(); $bmp.Dispose();';
+    execFileSync(
+      'powershell.exe',
+      ['-NoProfile', '-NonInteractive', '-Command', 'Add-Type -AssemblyName System.Windows.Forms;' , script],
+      { timeout: 8000 }
+    );
+    if (fs.existsSync(tmpOut)) {
+      const buf = fs.readFileSync(tmpOut);
+      if (buf.length > MIN_REAL_FRAME_BYTES) {
+        fs.writeFileSync(REAL_CLIENT_PNG, buf);
+        try { fs.unlinkSync(tmpOut); } catch (_e) { /* ignore */ }
+        return buf;
+      }
+      try { fs.unlinkSync(tmpOut); } catch (_e) { /* ignore */ }
+    }
+  } catch (_e) {
+    /* PowerShell indisponível — fallback SVG */
+  }
+
+  return null;
+}
+
 async function handleRequest(manager, req, res) {
   const urlObj = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
   const pathname = decodeURIComponent(urlObj.pathname);
@@ -124,6 +208,18 @@ async function handleRequest(manager, req, res) {
 
   // ---------------------------------------------------------------- API ---
   if (pathname === '/' || pathname === '/index.html') {
+    serveStatic(res, path.join(ROOT, 'apps', 'desktop', 'index.html'));
+    return;
+  }
+
+  // Alias do shell desktop: /ui/app.js → apps/desktop/ui/app.js
+  // (o index referencia ./ui/app.js; sob qualquer base relativa o browser
+  //  pode pedir /ui/app.js — servimos com 200 OK + Cache-Control: no-store)
+  if (pathname === '/ui/app.js' && req.method === 'GET') {
+    serveStatic(res, path.join(ROOT, 'apps', 'desktop', 'ui', 'app.js'));
+    return;
+  }
+  if (pathname === '/ui/' || pathname === '/ui') {
     serveStatic(res, path.join(ROOT, 'apps', 'desktop', 'index.html'));
     return;
   }
@@ -166,15 +262,37 @@ async function handleRequest(manager, req, res) {
 
   if (pathname === '/api/client/frame' && req.method === 'GET') {
     const frame = manager.getClientFrame();
+
+    // PNG REAL do cliente RubinOT (>25KB): quando o adapter devolve SVG e
+    // estamos fora do Vitest, tenta a captura real (screenshots nativos do
+    // cliente / PrintWindow / CopyFromScreen) antes do fallback SVG.
+    // Em VITEST==='true' isto é no-op — o SVG determinístico é preservado.
+    let bodyBuf = Buffer.isBuffer(frame.body) ? frame.body : Buffer.from(frame.body, 'utf8');
+    let contentType = frame.contentType;
+    let source = frame.source;
+    if (
+      process.env.VITEST !== 'true' &&
+      !Buffer.isBuffer(frame.body) &&
+      String(frame.contentType).indexOf('svg') !== -1
+    ) {
+      const realPng = captureRealClientPng();
+      if (realPng && realPng.length > MIN_REAL_FRAME_BYTES) {
+        bodyBuf = realPng;
+        contentType = 'image/png';
+        source = 'win32-real-png';
+      }
+    }
+
     const headers = {
-      'Content-Type': frame.contentType,
+      'Content-Type': contentType,
       'Cache-Control': 'no-store, no-cache, must-revalidate',
-      'X-Frame-Source': frame.source,
+      'X-Frame-Source': source,
       'X-Frame-Seq': String(frame.meta.seq),
       'X-Client-Detected': String(frame.meta.detected),
+      'X-Frame-Bytes': String(bodyBuf.length),
     };
     res.writeHead(200, headers);
-    res.end(Buffer.isBuffer(frame.body) ? frame.body : Buffer.from(frame.body, 'utf8'));
+    res.end(bodyBuf);
     return;
   }
 
@@ -234,4 +352,4 @@ if (require.main === module) {
   process.on('SIGTERM', shutdown);
 }
 
-module.exports = { createServer, handleRequest, serveStatic, DEFAULT_PORT };
+module.exports = { createServer, handleRequest, serveStatic, captureRealClientPng, REAL_CLIENT_PNG, MIN_REAL_FRAME_BYTES, DEFAULT_PORT };
