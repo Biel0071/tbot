@@ -1,0 +1,31 @@
+{
+  "name": "tbot-autonomous-tibia-bot",
+  "version": "1.0.0",
+  "description": "T BOT — Autonomous Tibia Bot (MVP 1.0) — Ecossistema de automação para RubinOT Client com Quality Gate Vitest",
+  "main": "runtime/api/server.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node runtime/api/server.js",
+    "runtime": "node runtime/api/server.js --port 8791",
+    "validate": "node scripts/validate-mvp.js",
+    "test:e2e": "vitest run tests/rubinot-modules.test.js",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "keywords": [
+    "tibia",
+    "rubinot",
+    "bot",
+    "automation",
+    "vision",
+    "imitation-learning"
+  ],
+  "author": "FÊNIX Forge",
+  "license": "MIT",
+  "devDependencies": {
+    "vitest": "^2.1.9"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

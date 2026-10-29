@@ -68,3 +68,10 @@ Thumbs.db
 coverage/
 htmlcov/
 ```
+# Node.js
+node_modules/
+
+# Runtime artifacts do T BOT
+data/*.log
+data/runtime-status.json
+data/rubinot_win32_state.json
