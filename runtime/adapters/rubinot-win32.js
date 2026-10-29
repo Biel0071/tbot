@@ -24,14 +24,23 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { execFileSync, spawn } = require('child_process');
+const { BehaviorLearner } = require('../learning/behavior-learner');
 
 const IS_WINDOWS = process.platform === 'win32';
 const isVitest = () => process.env.VITEST === 'true';
 
-// Caminhos reais do cliente RubinOT 2.0 (Vadel)
+// Bytes mínimos de um PNG REAL do cliente. Superfícies DirectX frequentemente
+// retornam pelo PrintWindow um PNG preto vazio de ~356 ou ~4435 bytes — por
+// isso NUNCA aceitamos buf.length > 100. Exigimos sempre > 25 KB.
+const MIN_REAL_BYTES = 25000;
+
+// Caminhos reais do cliente RubinOT 2.0 (Vadel).
+// IMPORTANTE: o launcher oficial "RubinOT.exe" vem EM PRIMEIRO LUGAR — iniciar
+// rubinot_dx.exe diretamente, sem o launcher, aciona bloqueio do
+// EMAC LAB Anti-Cheat.
 const RUBINOT_CANDIDATE_EXES = [
-  'C:\\Program Files (x86)\\RubinOT 2.0\\bin\\x64\\rubinot_dx.exe',
   'C:\\Program Files (x86)\\RubinOT 2.0\\RubinOT.exe',
+  'C:\\Program Files (x86)\\RubinOT 2.0\\bin\\x64\\rubinot_dx.exe',
   path.join(os.homedir() || 'C:\\Users\\Default', 'AppData', 'Local', 'RubinOT', 'bin', 'client.exe'),
 ];
 
@@ -68,18 +77,18 @@ class RubinotWin32Adapter {
     this.moveHistory = [];
     this.keyHistory = [];
     this.launchHistory = [];
-    this.learning = {
-      totalClicks: 0,
-      totalMoves: 0,
-      totalKeys: 0,
-      totalLaunches: 0,
-      patterns: {},
-      hotZones: {},
-      lastUpdate: null,
-    };
+    // BehaviorLearner: fonte única de verdade do aprendizado (comoAnda/ondeAnda)
+    this.learner = new BehaviorLearner();
+    this.learning = this.learner.getSnapshot();
     this.stateFile = opts.stateFile || STATE_FILE;
     this.frameCounter = 0;
     this._lastRealCaptureError = null;
+  }
+
+  /** Sincroniza this.learning com o snapshot do BehaviorLearner. */
+  _syncLearning() {
+    this.learning = this.learner.getSnapshot();
+    return this.learning;
   }
 
   // ---------------------------------------------------------------- util ---
@@ -162,10 +171,14 @@ class RubinotWin32Adapter {
     }
 
     try {
+      // Ordena os processos rubinot|tibia PRIORIZANDO quem tem janela real:
+      // 0) título contém "RubinOT Client" → 1) MainWindowHandle ≠ 0 → 2) sem janela.
       const ps =
-        "$procs = Get-Process | Where-Object { $_.ProcessName -match 'rubinot|tibia' } | " +
+        "$p = Get-Process | Where-Object { $_.ProcessName -match 'rubinot|tibia' } | " +
+        'Sort-Object @{Expression={if ($_.MainWindowTitle -match "RubinOT Client") {0} ' +
+        'elseif ($_.MainWindowHandle -ne 0) {1} else {2}}} | ' +
         'Select-Object -First 1 Id, ProcessName, MainWindowTitle, MainWindowHandle; ' +
-        "if ($procs) { $procs | ConvertTo-Json -Compress } else { 'NONE' }";
+        "if ($p) { $p | ConvertTo-Json -Compress } else { 'NONE' }";
       const out = String(this._runPs(ps) || '').trim();
 
       if (!out || out === 'NONE') {
@@ -257,7 +270,8 @@ class RubinotWin32Adapter {
     if (isVitest()) {
       this.scanClient(); // simulated detection
       this.client.focused = true;
-      this.learning.totalLaunches += 1;
+      this.learner.recordLaunch({ action: 'launched', pid: this.client.pid, exePath: RUBINOT_CANDIDATE_EXES[0], at: ts });
+      this._syncLearning();
       this.launchHistory.push({ at: ts, action: 'launched', mode: 'vitest-simulated' });
       this._persistState();
       return { ok: true, action: 'launched', client: this.client };
@@ -273,7 +287,8 @@ class RubinotWin32Adapter {
         focused = this._setForeground(current);
       }
       this.client.focused = focused;
-      this.learning.totalLaunches += 1;
+      this.learner.recordLaunch({ action: 'focused', pid: current.pid, exePath: current.exePath, at: ts });
+      this._syncLearning();
       this.launchHistory.push({ at: ts, action: 'focused', pid: current.pid, focused });
       this._persistState();
       return {
@@ -295,7 +310,8 @@ class RubinotWin32Adapter {
         });
         child.unref();
         const after = this.scanClient();
-        this.learning.totalLaunches += 1;
+        this.learner.recordLaunch({ action: 'launched', pid: after.pid, exePath, at: ts });
+        this._syncLearning();
         this.launchHistory.push({ at: ts, action: 'launched', exePath, pid: after.pid });
         this._persistState();
         return {
@@ -318,7 +334,8 @@ class RubinotWin32Adapter {
     }
 
     // 3) Sem exe real disponível (Linux/preview ou RubinOT não instalado)
-    this.learning.totalLaunches += 1;
+    this.learner.recordLaunch({ action: 'launched', pid: this.client.pid || 9001, at: ts });
+    this._syncLearning();
     this.launchHistory.push({ at: ts, action: 'launched', mode: 'preview-fallback' });
     this.client = Object.assign({}, this.client, {
       detected: true,
@@ -347,8 +364,12 @@ class RubinotWin32Adapter {
     if (!IS_WINDOWS || isVitest()) return true;
     try {
       const hwnd = Number((info && info.hwnd) || 0);
+      const pid = Number((info && info.pid) || 0);
+      if (!(pid > 0) && !(hwnd > 0)) return false;
+      // Combinação robusta: WScript.Shell.AppActivate(pid) + ShowWindowAsync(h,9)
+      // + SetForegroundWindow(h). Retorna true quando pid/hwnd válido.
       const ps =
-        `Add-Type @"` + '\n' +
+        'Add-Type @"' + '\n' +
         'using System;' + '\n' +
         'using System.Runtime.InteropServices;' + '\n' +
         'public class WFn {' + '\n' +
@@ -356,10 +377,15 @@ class RubinotWin32Adapter {
         '  [DllImport("user32.dll")] public static extern bool ShowWindowAsync(IntPtr hWnd, int nCmdShow);' + '\n' +
         '}' + '\n' +
         `"@; ` +
+        '$ok = $false; ' +
+        (pid > 0 ? `(New-Object -ComObject WScript.Shell).AppActivate(${pid}) | Out-Null; ` : '') +
         `$h = [IntPtr]${hwnd}; ` +
-        'if ($h -ne [IntPtr]::Zero) { [WFn]::ShowWindowAsync($h, 9) | Out-Null; [WFn]::SetForegroundWindow($h) } else { $false }';
-      const out = String(this._runPs(ps) || '').trim().toLowerCase();
-      return out.includes('true');
+        'if ($h -ne [IntPtr]::Zero) { ' +
+        '[WFn]::ShowWindowAsync($h, 9) | Out-Null; ' +
+        '$ok = [WFn]::SetForegroundWindow($h) } ' +
+        `if ($ok -or ${pid > 0 ? '$true' : '$false'}) { 'TRUE' } else { 'FALSE' }`;
+      const out = String(this._runPs(ps) || '').trim().toUpperCase();
+      return out.includes('TRUE');
     } catch (_e) {
       return false;
     }
@@ -390,15 +416,9 @@ class RubinotWin32Adapter {
     if (this.clickHistory.length > 500) this.clickHistory.splice(0, this.clickHistory.length - 500);
     this.clickCount += 1;
 
-    // Aprendizado: hot zones em grid 8x8 do palco
-    const zx = Math.min(7, Math.max(0, Math.floor((nx / 800) * 8)));
-    const zy = Math.min(7, Math.max(0, Math.floor((ny / 620) * 8)));
-    const zone = `${zx}:${zy}`;
-    this.learning.hotZones[zone] = (this.learning.hotZones[zone] || 0) + 1;
-    const pat = `${btn}@${zone}`;
-    this.learning.patterns[pat] = (this.learning.patterns[pat] || 0) + 1;
-    this.learning.totalClicks = this.clickCount;
-    this.learning.lastUpdate = entry.at;
+    // Aprendizado: delega para o BehaviorLearner (hot zones 8x8 + padrão button@zone)
+    this.learner.recordClick({ x: nx, y: ny, button: btn, source: entry.source, target: entry.target, at: entry.at });
+    this._syncLearning();
 
     let delivered = false;
     let deliverError = null;
@@ -446,24 +466,28 @@ class RubinotWin32Adapter {
     const nx = Number(x);
     const ny = Number(y);
     if (!Number.isFinite(nx) || !Number.isFinite(ny)) return { ok: false };
-    this.moveHistory.push({ at: this._nowIso(), x: Math.round(nx), y: Math.round(ny) });
+    const at = this._nowIso();
+    this.moveHistory.push({ at, x: Math.round(nx), y: Math.round(ny) });
     if (this.moveHistory.length > 500) this.moveHistory.splice(0, this.moveHistory.length - 500);
-    this.learning.totalMoves += 1;
-    this.learning.lastUpdate = this._nowIso();
-    return { ok: true, moveCount: this.learning.totalMoves };
+    // Delega para o BehaviorLearner (comoAnda/ondeAnda atualizados em tempo real)
+    const r = this.learner.recordMove({ x: nx, y: ny, at });
+    this._syncLearning();
+    return { ok: true, moveCount: this.learning.totalMoves, delta: { dx: r.dx, dy: r.dy, dist: r.dist }, zone: r.zone };
   }
 
-  registerKey(key) {
+  registerKey(key, opts = {}) {
     const k = String(key || '').slice(0, 32);
     if (!k) return { ok: false };
-    this.keyHistory.push({ at: this._nowIso(), key: k });
+    const at = this._nowIso();
+    this.keyHistory.push({ at, key: k });
     if (this.keyHistory.length > 500) this.keyHistory.splice(0, this.keyHistory.length - 500);
-    this.learning.totalKeys += 1;
-    this.learning.lastUpdate = this._nowIso();
+    this.learner.recordKey({ key: k, action: opts.action || 'press', method: opts.method || 'ui', at });
+    this._syncLearning();
     return { ok: true, keyCount: this.learning.totalKeys };
   }
 
   getLearning() {
+    this._syncLearning();
     return {
       ok: true,
       generatedAt: this._nowIso(),
@@ -475,8 +499,14 @@ class RubinotWin32Adapter {
         launches: this.learning.totalLaunches,
         distinctPatterns: Object.keys(this.learning.patterns).length,
         distinctHotZones: Object.keys(this.learning.hotZones).length,
+        style: this.learning.comoAnda.style,
+        cadencePerMin: this.learning.comoAnda.cadencePerMin,
+        topZone: this.learning.ondeAnda.topZone,
       },
       learning: this.learning,
+      comoAnda: this.learning.comoAnda,
+      ondeAnda: this.learning.ondeAnda,
+      keyCounts: this.learning.keyCounts,
       recentClicks: this.clickHistory.slice(-20),
       recentKeys: this.keyHistory.slice(-20),
       launchHistory: this.launchHistory.slice(-10),
@@ -508,36 +538,47 @@ class RubinotWin32Adapter {
   }
 
   _captureRealPng() {
+    // NUNCA aceitar PNGs minúsculos: superfícies DirectX retornam pelo
+    // PrintWindow um PNG preto vazio (~356 ou ~4435 bytes). Exigimos > 25 KB.
+    const MIN_BYTES = MIN_REAL_BYTES; // 25000
     try {
-      // 1) PrintWindow / CopyFromScreen da janela real (Windows)
-      if (IS_WINDOWS && this.client.detected && this.client.running) {
+      // 1) CopyFromScreen do retângulo REAL da janela (GetWindowRect) — Windows,
+      //    cliente detectado/rodando e hwnd válido. Traz a janela para frente e
+      //    captura exatamente o seu retângulo na tela.
+      if (IS_WINDOWS && this.client.detected && this.client.running && Number(this.client.hwnd) > 0) {
         const tmp = path.join(os.tmpdir(), `tbot_frame_${process.pid}.png`);
         const hwnd = Number(this.client.hwnd || 0);
         const ps =
           'Add-Type -AssemblyName System.Drawing; ' +
-          `Add-Type @"` + '\n' +
+          'Add-Type @"' + '\n' +
           'using System;' + '\n' +
           'using System.Runtime.InteropServices;' + '\n' +
           'public class PWin {' + '\n' +
-          '  [DllImport("user32.dll")] public static extern bool PrintWindow(IntPtr hWnd, IntPtr hdcBlt, uint nFlags);' + '\n' +
           '  [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hWnd, out RECT r);' + '\n' +
+          '  [DllImport("user32.dll")] public static extern bool ShowWindowAsync(IntPtr hWnd, int nCmdShow);' + '\n' +
+          '  [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);' + '\n' +
           '  public struct RECT { public int Left, Top, Right, Bottom; }' + '\n' +
           '}' + '\n' +
           `"@; ` +
           `$h = [IntPtr]${hwnd}; ` +
           'if ($h -ne [IntPtr]::Zero) { ' +
+          '[PWin]::ShowWindowAsync($h, 9) | Out-Null; ' +
+          '[PWin]::SetForegroundWindow($h) | Out-Null; ' +
+          'Start-Sleep -Milliseconds 120; ' +
           '$r = New-Object PWin+RECT; [PWin]::GetWindowRect($h, [ref]$r) | Out-Null; ' +
           '$w = $r.Right - $r.Left; $hh = $r.Bottom - $r.Top; ' +
-          'if ($w -gt 0 -and $hh -gt 0) { ' +
+          'if ($w -gt 120 -and $hh -gt 120 -and $r.Left -gt -10000) { ' +
           '$bmp = New-Object System.Drawing.Bitmap($w, $hh); ' +
           '$g = [System.Drawing.Graphics]::FromImage($bmp); ' +
-          '[PWin]::PrintWindow($h, $g.GetHdc(), 2) | Out-Null; ' +
+          '$g.CopyFromScreen($r.Left, $r.Top, 0, 0, (New-Object System.Drawing.Size($w, $hh))); ' +
           `$bmp.Save('${tmp.replace(/\\/g, '\\\\')}', [System.Drawing.Imaging.ImageFormat]::Png); ` +
+          '$g.Dispose(); $bmp.Dispose(); ' +
           "'SAVED' } else { 'EMPTY' } } else { 'NOHWND' }";
         const out = String(this._runPs(ps, 6000) || '').trim();
         if (out.includes('SAVED') && fs.existsSync(tmp)) {
           const buf = fs.readFileSync(tmp);
-          if (buf.length > 100) {
+          // Somente PNGs reais (> 25 KB) são aceitos — nada de preto vazio.
+          if (buf.length > MIN_BYTES) {
             try {
               fs.unlinkSync(tmp);
             } catch (_e) {
@@ -546,19 +587,24 @@ class RubinotWin32Adapter {
             this._lastRealCaptureError = null;
             return buf;
           }
+          try {
+            fs.unlinkSync(tmp);
+          } catch (_e) {
+            /* ignore */
+          }
         }
       }
 
-      // 2) PNG mais recente da pasta de screenshots do RubinOT
+      // 2) PNG mais recente da pasta de screenshots do RubinOT (também > 25 KB)
       if (IS_WINDOWS && fs.existsSync(RUBINOT_SCREENSHOTS_DIR)) {
         const files = fs
           .readdirSync(RUBINOT_SCREENSHOTS_DIR)
           .filter((f) => /\.(png|jpg|jpeg)$/i.test(f))
           .map((f) => ({ f, t: fs.statSync(path.join(RUBINOT_SCREENSHOTS_DIR, f)).mtimeMs }))
           .sort((a, b) => b.t - a.t);
-        if (files.length) {
-          const buf = fs.readFileSync(path.join(RUBINOT_SCREENSHOTS_DIR, files[0].f));
-          if (buf.length > 100) {
+        for (const { f } of files) {
+          const buf = fs.readFileSync(path.join(RUBINOT_SCREENSHOTS_DIR, f));
+          if (buf.length > MIN_BYTES) {
             this._lastRealCaptureError = null;
             return buf;
           }
@@ -648,4 +694,5 @@ module.exports = {
   RUBINOT_CANDIDATE_EXES,
   RUBINOT_SCREENSHOTS_DIR,
   PROCESS_HINTS,
+  MIN_REAL_BYTES,
 };

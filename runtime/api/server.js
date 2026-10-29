@@ -11,6 +11,8 @@
  *   POST /api/client/click      → registra clique (x,y,button) + aprendizado
  *   POST /api/client/move       → registra movimento de mouse
  *   POST /api/client/key        → registro de tecla pressionada
+ *   POST /api/client/scan       → re-scan Win32 imediato do cliente real
+ *   POST /api/control           → cmd start|stop|pause|launch|scan|click|key|modules
  *   GET  /api/client/frame      → frame atual do cliente (PNG real ou SVG determinístico)
  *   GET  /api/learning          → telemetria de aprendizado em tempo real
  *   GET  /apps/*, /runtime/*, /core/*, /data/* → arquivos estáticos com Cache-Control: no-store
@@ -260,6 +262,19 @@ async function handleRequest(manager, req, res) {
     return;
   }
 
+  if (pathname === '/api/client/scan' && req.method === 'POST') {
+    const client = manager.scanClient();
+    sendJson(res, 200, { ok: true, client });
+    return;
+  }
+
+  if (pathname === '/api/control' && req.method === 'POST') {
+    const body = await readBody(req);
+    const result = manager.control(body);
+    sendJson(res, result.ok ? 200 : 400, result);
+    return;
+  }
+
   if (pathname === '/api/client/frame' && req.method === 'GET') {
     const frame = manager.getClientFrame();
 
@@ -270,16 +285,18 @@ async function handleRequest(manager, req, res) {
     let bodyBuf = Buffer.isBuffer(frame.body) ? frame.body : Buffer.from(frame.body, 'utf8');
     let contentType = frame.contentType;
     let source = frame.source;
-    if (
-      process.env.VITEST !== 'true' &&
-      !Buffer.isBuffer(frame.body) &&
-      String(frame.contentType).indexOf('svg') !== -1
-    ) {
-      const realPng = captureRealClientPng();
-      if (realPng && realPng.length > MIN_REAL_FRAME_BYTES) {
-        bodyBuf = realPng;
-        contentType = 'image/png';
-        source = 'win32-real-png';
+    // Fora do Vitest: NUNCA devolver um frame real com menos de 25KB — se o
+    // adapter entregou SVG ou um PNG pequeno, tenta a captura real (>25KB).
+    if (process.env.VITEST !== 'true') {
+      const tooSmall =
+        String(contentType).indexOf('svg') !== -1 || bodyBuf.length < MIN_REAL_FRAME_BYTES;
+      if (tooSmall) {
+        const realPng = captureRealClientPng();
+        if (realPng && realPng.length > MIN_REAL_FRAME_BYTES) {
+          bodyBuf = realPng;
+          contentType = 'image/png';
+          source = 'win32-real-png';
+        }
       }
     }
 
@@ -323,6 +340,20 @@ async function handleRequest(manager, req, res) {
     }
   } catch (_e) {
     /* ignore */
+  }
+
+  // Resolução alternativa: caminhos relativos ao shell desktop
+  // (ex.: /ui/app.js → apps/desktop/ui/app.js) — sempre com no-store.
+  const altPath = path.normalize(path.join(ROOT, 'apps', 'desktop', pathname));
+  if (altPath.startsWith(path.join(ROOT, 'apps', 'desktop'))) {
+    try {
+      if (fs.existsSync(altPath) && fs.statSync(altPath).isFile()) {
+        serveStatic(res, altPath);
+        return;
+      }
+    } catch (_e) {
+      /* ignore */
+    }
   }
 
   sendJson(res, 404, {

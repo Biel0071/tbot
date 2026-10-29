@@ -27,6 +27,19 @@ class RuntimeManager {
     this.events = [];
     this.logFile = opts.logFile || path.join(this.dataDir, 'runtime-live.log');
     this.status = 'idle'; // idle | running | paused | error
+    // Módulos do agente autônomo (expostos em GET /api/status e controláveis
+    // via POST /api/control { cmd:'modules', payload:{...} })
+    this.modules = {
+      autoHeal: true,
+      manaRestore: true,
+      autoAttack: true,
+      cavebot: true,
+      autoLoot: true,
+      autoEat: true,
+      autoRefill: true,
+      win32Input: true,
+    };
+    this._lastScanMs = 0;
     this._persistStatus();
   }
 
@@ -74,12 +87,26 @@ class RuntimeManager {
   // ------------------------------------------------------------- status ---
 
   getStatus() {
+    // Fora do Vitest: re-scan em tempo real (throttle 1.5s) para refletir com
+    // honestidade se o cliente abriu ou fechou — nunca estado cacheado antigo.
+    if (process.env.VITEST !== 'true' && Date.now() - (this._lastScanMs || 0) > 1500) {
+      this._lastScanMs = Date.now();
+      try {
+        this.adapter.scanClient();
+      } catch (_e) {
+        /* scan best-effort; status continua respondendo */
+      }
+    }
     return {
       ok: true,
       product: 'T BOT — Autonomous Tibia Bot (MVP 1.0)',
       version: '1.0.0',
       startedAt: this.startedAt,
       status: this.status,
+      bot: this.status === 'idle' ? 'stopped' : this.status,
+      state: this.status.toUpperCase(),
+      modules: this.modules,
+      learning: this.adapter.getLearning().summary,
       client: this.adapter.client,
       counters: {
         clicks: this.adapter.clickCount,
@@ -206,6 +233,49 @@ class RuntimeManager {
     this._emit('agent-pause', {});
     this._persistStatus();
     return { ok: true, status: this.status };
+  }
+
+  /**
+   * POST /api/control — comando unificado do agente:
+   * cmd ∈ start | stop | pause | launch | scan | click | key | modules
+   */
+  control(body = {}) {
+    const cmd = String(body.cmd || body.action || '').toLowerCase();
+    const payload = body.payload || body.args || {};
+    switch (cmd) {
+      case 'start':
+        return { ok: true, cmd, result: this.startAgent() };
+      case 'stop':
+        return { ok: true, cmd, result: this.stopAgent() };
+      case 'pause':
+        return { ok: true, cmd, result: this.pauseAgent() };
+      case 'launch':
+        return { ok: true, cmd, result: this.launchClient(payload) };
+      case 'scan':
+        return { ok: true, cmd, result: this.scanClient() };
+      case 'click':
+        return { ok: true, cmd, result: this.sendClientClick(payload) };
+      case 'key':
+        return { ok: true, cmd, result: this.registerKey(payload) };
+      case 'move':
+        return { ok: true, cmd, result: this.registerMove(payload) };
+      case 'modules': {
+        if (payload && typeof payload === 'object') {
+          for (const k of Object.keys(this.modules)) {
+            if (typeof payload[k] === 'boolean') this.modules[k] = payload[k];
+          }
+        }
+        this._emit('modules-update', { modules: this.modules });
+        return { ok: true, cmd, modules: this.modules };
+      }
+      default:
+        return {
+          ok: false,
+          status: 400,
+          error: `comando desconhecido: '${cmd || '(vazio)'}'`,
+          allowed: ['start', 'stop', 'pause', 'launch', 'scan', 'click', 'key', 'move', 'modules'],
+        };
+    }
   }
 }
 

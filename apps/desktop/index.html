@@ -133,7 +133,16 @@
       transform: translate(-50%, -50%) scale(1.035);
       box-shadow: 0 0 0 1px rgba(201,162,75,.5), 0 16px 56px rgba(0,0,0,.8), 0 0 44px rgba(255,211,92,.3);
     }
-    #centerLogoLauncher.hidden { opacity: 0; pointer-events: none; transform: translate(-50%, -46%) scale(.92); }
+    #centerLogoLauncher.hidden {
+      /* Selo flutuante compacto e CLICÁVEL no topo do palco — nunca invisível:
+         manter pointer-events:auto para que um clique restaure a logo central. */
+      top: 10px;
+      left: 50%;
+      transform: translateX(-50%) scale(0.72);
+      opacity: 0.92;
+      pointer-events: auto;
+      padding: 8px 16px;
+    }
     #centerLogoLauncher .emblem {
       width: 92px; height: 92px; border-radius: 50%;
       background: radial-gradient(circle at 35% 30%, #ffe9a8 0%, #ffd35c 30%, #c9a24b 62%, #7a5a1e 100%);
@@ -212,6 +221,7 @@
       <span class="spacer"></span>
       <button id="btnAgentStart" title="Ligar agente autônomo">▶ Agente</button>
       <button id="btnAgentPause" title="Pausar agente">⏸ Pausar</button>
+      <button id="btnTopLaunchClient" title="Abrir (se fechado) ou focar (se aberto) o RubinOT Client real">🚀 Abrir/Focar RubinOT</button>
       <button id="btnToggleCharFull" title="Tela cheia do personagem (?charFull=1)">⛶ Tela Cheia</button>
     </header>
 
