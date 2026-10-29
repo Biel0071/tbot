@@ -152,10 +152,18 @@ class RuntimeManager {
    * alimenta clickHistory/clickCount e o módulo de aprendizado.
    */
   sendClientClick(body = {}) {
+    if (body.action === 'abrir-jogo') {
+      const r = this.adapter.sendText('', { action: 'abrir-jogo' });
+      this._emit('client-click', { x: 620, y: 530, button: 'left', action: 'abrir-jogo' });
+      this._persistStatus();
+      return { ...r, learning: this.adapter.getLearning().summary };
+    }
     const x = body.x !== undefined ? body.x : body.clientX;
     const y = body.y !== undefined ? body.y : body.clientY;
     const button = body.button || 'left';
     const result = this.adapter.sendClick(x, y, button, {
+      relX: body.relX,
+      relY: body.relY,
       source: body.source || 'live-frame',
       target: body.target,
     });
@@ -176,8 +184,27 @@ class RuntimeManager {
   }
 
   registerKey(body = {}) {
-    const r = this.adapter.registerKey(body.key);
-    if (r.ok) this._emit('key-press', { key: body.key, total: r.keyCount });
+    const r = this.adapter.registerKey(body.key, {
+      masked: Boolean(body.masked),
+      deliver: body.deliver,
+      method: body.method || 'ui',
+    });
+    if (r.ok) this._emit('key-press', { key: body.masked ? '*' : body.key, total: r.keyCount, delivered: r.delivered });
+    return r;
+  }
+
+  sendClientText(body = {}) {
+    const r = this.adapter.sendText(body.text || '', {
+      field: body.field,
+      masked: Boolean(body.masked || body.field === 'password'),
+      submit: Boolean(body.submit),
+      clear: body.clear,
+      action: body.action,
+    });
+    if (r.ok) {
+      this._emit('client-type', { field: r.field, length: r.length, delivered: r.delivered });
+      this._persistStatus();
+    }
     return r;
   }
 
@@ -257,8 +284,13 @@ class RuntimeManager {
         return { ok: true, cmd, result: this.sendClientClick(payload) };
       case 'key':
         return { ok: true, cmd, result: this.registerKey(payload) };
+      case 'type':
+        return { ok: true, cmd, result: this.sendClientText(payload) };
       case 'move':
         return { ok: true, cmd, result: this.registerMove(payload) };
+      case 'restart':
+        setTimeout(() => process.exit(0), 120).unref();
+        return { ok: true, cmd, message: 'restarting server' };
       case 'modules': {
         if (payload && typeof payload === 'object') {
           for (const k of Object.keys(this.modules)) {

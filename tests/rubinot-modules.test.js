@@ -342,6 +342,47 @@ describe('Preview do cliente REAL — /ui/app.js 200 OK + PNG real >25KB', () =>
   });
 });
 
+describe('Fluxo Launcher (Abrir Jogo) -> Login (Digitar E-mail e Senha) -> Aprendizado', () => {
+  it('POST /api/client/click com action abrir-jogo clica na coordenada do botão Abrir Jogo (77.5%, 85.5%)', async () => {
+    const r = await request('POST', `${baseUrl}/api/client/click`, { action: 'abrir-jogo' });
+    expect(r.status).toBe(200);
+    expect(r.json.ok).toBe(true);
+    expect(r.json.click.relX).toBeCloseTo(0.775, 2);
+    expect(r.json.click.relY).toBeCloseTo(0.855, 2);
+  });
+
+  it('POST /api/client/type digita e-mail e senha (mascarando senha nos logs/aprendizado)', async () => {
+    const rEmail = await request('POST', `${baseUrl}/api/client/type`, { field: 'email', text: 'player@rubinot.com' });
+    expect(rEmail.status).toBe(200);
+    expect(rEmail.json.ok).toBe(true);
+
+    const secretPwd = 'MinhaSenhaSecreta99!';
+    const rPwd = await request('POST', `${baseUrl}/api/client/type`, {
+      field: 'password',
+      text: secretPwd,
+      masked: true,
+      submit: true,
+    });
+    expect(rPwd.status).toBe(200);
+    expect(rPwd.json.ok).toBe(true);
+
+    const l = await request('GET', `${baseUrl}/api/learning`);
+    expect(l.json.ok).toBe(true);
+    const recentKeyStr = JSON.stringify(l.json.recentKeys);
+    expect(recentKeyStr).not.toContain('MinhaSenhaSecreta99');
+    expect(l.json.recentKeys.some((k) => k.key === '*')).toBe(true);
+  });
+
+  it('UI contém #clientControlBar com #btnClickAbrirJogo, #inpClientEmail, #inpClientPassword e #btnTypeLogin', () => {
+    const html = fs.readFileSync(path.join(ROOT, 'apps', 'desktop', 'index.html'), 'utf8');
+    expect(html).toContain('id="clientControlBar"');
+    expect(html).toContain('id="btnClickAbrirJogo"');
+    expect(html).toContain('id="inpClientEmail"');
+    expect(html).toContain('id="inpClientPassword"');
+    expect(html).toContain('id="btnTypeLogin"');
+  });
+});
+
 // Utilitário: PNG válido com ruído pseudoaleatório suficiente para >N bytes
 function buildBigPng(minBytes) {
   const zlib = require('zlib');

@@ -134,14 +134,25 @@
       box-shadow: 0 0 0 1px rgba(201,162,75,.5), 0 16px 56px rgba(0,0,0,.8), 0 0 44px rgba(255,211,92,.3);
     }
     #centerLogoLauncher.hidden {
-      /* Selo flutuante compacto e CLICÁVEL no topo do palco — nunca invisível:
-         manter pointer-events:auto para que um clique restaure a logo central. */
-      top: 10px;
-      left: 50%;
-      transform: translateX(-50%) scale(0.72);
-      opacity: 0.92;
+      top: auto;
+      bottom: 10px;
+      right: 12px;
+      left: auto;
+      transform: none;
+      opacity: 0.9;
       pointer-events: auto;
-      padding: 8px 16px;
+      padding: 6px 12px;
+      flex-direction: row;
+      gap: 8px;
+    }
+    #centerLogoLauncher.hidden .emblem {
+      width: 32px;
+      height: 32px;
+      font-size: 14px;
+    }
+    #centerLogoLauncher.hidden .logo-title,
+    #centerLogoLauncher.hidden .logo-sub {
+      display: none;
     }
     #centerLogoLauncher .emblem {
       width: 92px; height: 92px; border-radius: 50%;
@@ -189,6 +200,11 @@
     body.char-fullscreen footer {
       grid-column: 1 / -1;
     }
+    body.char-fullscreen header#topbar,
+    body.char-fullscreen main#view,
+    body.char-fullscreen footer#statusbar {
+      grid-column: 1 / -1;
+    }
     body.char-fullscreen nav#rail,
     body.char-fullscreen aside#sidePanel {
       display: none;
@@ -209,6 +225,55 @@
     }
     body.char-fullscreen #centerLogoLauncher {
       padding: 18px 24px;
+    }
+    #clientControlBar {
+      position: absolute;
+      top: 8px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 25;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 10px;
+      border-radius: 10px;
+      background: rgba(14, 11, 7, 0.92);
+      border: 1px solid #8a6d2b;
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.75);
+      max-width: 96%;
+    }
+    #clientControlBar input {
+      background: #141008;
+      color: #f0e6d2;
+      border: 1px solid #5c4922;
+      border-radius: 6px;
+      padding: 4px 8px;
+      font-size: 12px;
+      width: 145px;
+    }
+    #clientControlBar button {
+      background: #231c10;
+      color: #f5d37a;
+      border: 1px solid #8a6d2b;
+      border-radius: 6px;
+      padding: 4px 9px;
+      font-size: 11px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    #clientControlBar button.primary {
+      background: linear-gradient(180deg, #e3b341, #9e7318);
+      color: #120e07;
+    }
+    #clientControlBar .stage-pill {
+      font-size: 11px;
+      padding: 3px 8px;
+      border-radius: 999px;
+      background: #1a2c1e;
+      color: #56d364;
+      border: 1px solid #2ea043;
+      font-weight: 700;
     }
   </style>
 </head>
@@ -241,8 +306,19 @@
     <!-- ======================= PALCO CENTRAL ======================= -->
     <main id="view">
       <section id="centerClientViewport" aria-label="Palco central do cliente RubinOT">
+        <!-- Barra de Controle Direto: Launcher (Abrir Jogo) -> Login (E-mail / Senha) -> Jogo -->
+        <div id="clientControlBar" aria-label="Controles diretos do cliente RubinOT">
+          <span class="stage-pill" id="clientStageBadge">Etapa: Detectando…</span>
+          <button id="btnClickAbrirJogo" type="button" class="primary" title="Clica em 'Abrir Jogo' no Launcher do RubinOT">🎮 Clicar "Abrir Jogo"</button>
+          <input id="inpClientEmail" type="email" placeholder="E-mail da conta RubinOT" autocomplete="off" />
+          <input id="inpClientPassword" type="password" placeholder="Senha (digitar no cliente)" autocomplete="off" />
+          <button id="btnTypeLogin" type="button" class="primary" title="Clica nos campos E-MAIL e PASSWORD do cliente, digita e faz Login">🔑 Digitar Senha &amp; Logar</button>
+          <button id="btnSendEnter" type="button" title="Enviar tecla Enter para o cliente">⏎ Enter</button>
+          <button id="btnShowLogoCard" type="button" title="Mostrar card central da Logo">🏷 Logo Central</button>
+        </div>
+
         <!-- Frame ao vivo do cliente real (/api/client/frame) -->
-        <img id="liveCharFrame" alt="RubinOT Client — frame ao vivo" />
+        <img id="liveCharFrame" class="visible" src="/api/client/frame" tabindex="0" alt="RubinOT Client — frame ao vivo (clique para interagir e digitar)" />
 
         <!-- LOGO CENTRAL INTERATIVA: clica e abre (se fechado) ou foca (se aberto) -->
         <div id="centerLogoLauncher" role="button" tabindex="0"

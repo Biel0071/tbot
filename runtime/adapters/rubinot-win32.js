@@ -179,6 +179,8 @@ class RubinotWin32Adapter {
         'elseif ($_.MainWindowHandle -ne 0) {1} else {2}}} | ' +
         'Select-Object -First 1 Id, ProcessName, MainWindowTitle, MainWindowHandle; ' +
         "if ($p) { $p | ConvertTo-Json -Compress } else { 'NONE' }";
+      if (this._runPs === RubinotWin32Adapter.prototype._runPs && this._lastScanAtMs && Date.now() - this._lastScanAtMs < 1200) return this.client;
+      this._lastScanAtMs = Date.now();
       const out = String(this._runPs(ps) || '').trim();
 
       if (!out || out === 'NONE') {
@@ -213,10 +215,21 @@ class RubinotWin32Adapter {
         return this.client;
       }
 
+      const rawTitle = String(info.MainWindowTitle || '').trim();
+      const procName = String(info.ProcessName || '').toLowerCase();
+      let stage = 'login';
+      if (/rubinot client\s*-\s*.+/i.test(rawTitle)) {
+        stage = 'ingame';
+      } else if (procName === 'rubinot' && !/rubinot client/i.test(rawTitle)) {
+        stage = 'launcher';
+      }
+
       this.client = {
         detected: true,
         pid: Number(info.Id) || null,
-        windowTitle: info.MainWindowTitle || 'RubinOT Client',
+        processName: info.ProcessName || 'rubinot_dx',
+        windowTitle: rawTitle || (stage === 'launcher' ? 'RubinOT Launcher' : 'RubinOT Client'),
+        stage,
         hwnd: Number(info.MainWindowHandle) || null,
         exePath: this._resolveExePath() || RUBINOT_CANDIDATE_EXES[0],
         running: true,
@@ -366,8 +379,6 @@ class RubinotWin32Adapter {
       const hwnd = Number((info && info.hwnd) || 0);
       const pid = Number((info && info.pid) || 0);
       if (!(pid > 0) && !(hwnd > 0)) return false;
-      // Combinação robusta: WScript.Shell.AppActivate(pid) + ShowWindowAsync(h,9)
-      // + SetForegroundWindow(h). Retorna true quando pid/hwnd válido.
       const ps =
         'Add-Type @"' + '\n' +
         'using System;' + '\n' +
@@ -375,12 +386,14 @@ class RubinotWin32Adapter {
         'public class WFn {' + '\n' +
         '  [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);' + '\n' +
         '  [DllImport("user32.dll")] public static extern bool ShowWindowAsync(IntPtr hWnd, int nCmdShow);' + '\n' +
+        '  [DllImport("user32.dll")] public static extern void SwitchToThisWindow(IntPtr hWnd, bool fAltTab);' + '\n' +
         '}' + '\n' +
         `"@; ` +
         '$ok = $false; ' +
         (pid > 0 ? `(New-Object -ComObject WScript.Shell).AppActivate(${pid}) | Out-Null; ` : '') +
         `$h = [IntPtr]${hwnd}; ` +
         'if ($h -ne [IntPtr]::Zero) { ' +
+        '[WFn]::SwitchToThisWindow($h, $true); ' +
         '[WFn]::ShowWindowAsync($h, 9) | Out-Null; ' +
         '$ok = [WFn]::SetForegroundWindow($h) } ' +
         `if ($ok -or ${pid > 0 ? '$true' : '$false'}) { 'TRUE' } else { 'FALSE' }`;
@@ -395,7 +408,8 @@ class RubinotWin32Adapter {
 
   /**
    * Registra um clique (x,y,button) no cliente e alimenta o aprendizado.
-   * Fora do Vitest no Windows, também envia o clique real na coordenada.
+   * Fora do Vitest no Windows, também envia o clique real na coordenada relativa
+   * exata da janela do RubinOT (Launcher "Abrir Jogo", Login "E-MAIL/PASSWORD/LOGIN" ou Jogo).
    */
   sendClick(x, y, button = 'left', opts = {}) {
     const nx = Number(x);
@@ -404,10 +418,18 @@ class RubinotWin32Adapter {
       return { ok: false, error: 'sendClick requer coordenadas numéricas x,y' };
     }
     const btn = ['left', 'right', 'middle'].includes(String(button)) ? String(button) : 'left';
+    const relX = Number.isFinite(Number(opts.relX))
+      ? Math.max(0, Math.min(1, Number(opts.relX)))
+      : Math.max(0, Math.min(1, nx / 800));
+    const relY = Number.isFinite(Number(opts.relY))
+      ? Math.max(0, Math.min(1, Number(opts.relY)))
+      : Math.max(0, Math.min(1, ny / 620));
     const entry = {
       at: this._nowIso(),
       x: Math.round(nx),
       y: Math.round(ny),
+      relX: Number(relX.toFixed(4)),
+      relY: Number(relY.toFixed(4)),
       button: btn,
       source: opts.source || 'logo-launcher',
       target: opts.target || (this.client.detected ? this.client.windowTitle || 'RubinOT' : 'stage'),
@@ -422,30 +444,49 @@ class RubinotWin32Adapter {
 
     let delivered = false;
     let deliverError = null;
-    if (!isVitest() && IS_WINDOWS && this.client.detected && this.client.running) {
-      try {
-        const ev =
-          btn === 'right'
-            ? { down: 8, up: 16 }
-            : btn === 'middle'
-              ? { down: 32, up: 64 }
-              : { down: 2, up: 4 };
-        const ps =
-          `Add-Type @"` + '\n' +
-          'using System;' + '\n' +
-          'using System.Runtime.InteropServices;' + '\n' +
-          'public class MFn {' + '\n' +
-          '  [DllImport("user32.dll")] public static extern bool SetCursorPos(int X, int Y);' + '\n' +
-          '  [DllImport("user32.dll")] public static extern void mouse_event(uint dwFlags, uint dx, uint dy, uint dwData, IntPtr dwExtraInfo);' + '\n' +
-          '}' + '\n' +
-          `"@; ` +
-          `[MFn]::SetCursorPos(${Math.round(nx)}, ${Math.round(ny)}) | Out-Null; ` +
-          `[MFn]::mouse_event(${ev.down},0,0,0,[IntPtr]::Zero); ` +
-          `[MFn]::mouse_event(${ev.up},0,0,0,[IntPtr]::Zero); 'OK'`;
-        const out = String(this._runPs(ps) || '').trim();
-        delivered = out.includes('OK');
-      } catch (err) {
-        deliverError = String(err && err.message ? err.message : err);
+    if (!isVitest() && IS_WINDOWS) {
+      if (!this.client.detected || !Number(this.client.hwnd)) {
+        this.scanClient();
+      }
+      if (this.client.detected && this.client.running && Number(this.client.hwnd) > 0) {
+        try {
+          const hwnd = Number(this.client.hwnd || 0);
+          const ev =
+            btn === 'right'
+              ? { down: 8, up: 16 }
+              : btn === 'middle'
+                ? { down: 32, up: 64 }
+                : { down: 2, up: 4 };
+          const ps =
+            `Add-Type @"` + '\n' +
+            'using System;' + '\n' +
+            'using System.Runtime.InteropServices;' + '\n' +
+            'public class MFn {' + '\n' +
+            '  [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr hWnd);' + '\n' +
+            '  [DllImport("user32.dll")] public static extern void SwitchToThisWindow(IntPtr hWnd, bool fAltTab);' + '\n' +
+            '  [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);' + '\n' +
+            '  [DllImport("user32.dll")] public static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, UIntPtr dwExtraInfo);' + '\n' +
+            '  [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hWnd, out RECT r);' + '\n' +
+            '  [DllImport("user32.dll")] public static extern bool SetCursorPos(int X, int Y);' + '\n' +
+            '  [DllImport("user32.dll")] public static extern void mouse_event(uint dwFlags, uint dx, uint dy, uint dwData, IntPtr dwExtraInfo);' + '\n' +
+            '  public struct RECT { public int Left, Top, Right, Bottom; }' + '\n' +
+            '}' + '\n' +
+            `"@; ` +
+            `$h = [IntPtr]${hwnd}; ` +
+            'if ([MFn]::IsIconic($h)) { [MFn]::SwitchToThisWindow($h, $true); Start-Sleep -Milliseconds 120; } ' +
+            '[MFn]::keybd_event(0x12, 0, 0, [UIntPtr]::Zero); [MFn]::keybd_event(0x12, 0, 2, [UIntPtr]::Zero); ' +
+            '[MFn]::SetForegroundWindow($h) | Out-Null; Start-Sleep -Milliseconds 50; ' +
+            '$r = New-Object MFn+RECT; [MFn]::GetWindowRect($h, [ref]$r) | Out-Null; ' +
+            '$w = $r.Right - $r.Left; $hh = $r.Bottom - $r.Top; ' +
+            `if ($w -gt 100 -and $hh -gt 100 -and $r.Left -gt -10000) { $tx = $r.Left + [int][Math]::Round(${relX.toFixed(4)} * $w); $ty = $r.Top + [int][Math]::Round(${relY.toFixed(4)} * $hh); } else { $tx = ${Math.round(nx)}; $ty = ${Math.round(ny)}; } ` +
+            '[MFn]::SetCursorPos($tx, $ty) | Out-Null; ' +
+            `[MFn]::mouse_event(${ev.down},0,0,0,[IntPtr]::Zero); ` +
+            `[MFn]::mouse_event(${ev.up},0,0,0,[IntPtr]::Zero); 'OK'`;
+          const out = String(this._runPs(ps) || '').trim();
+          delivered = out.includes('OK');
+        } catch (err) {
+          deliverError = String(err && err.message ? err.message : err);
+        }
       }
     }
 
@@ -475,15 +516,132 @@ class RubinotWin32Adapter {
     return { ok: true, moveCount: this.learning.totalMoves, delta: { dx: r.dx, dy: r.dy, dist: r.dist }, zone: r.zone };
   }
 
+  _toSendKeysToken(rawKey) {
+    const k = String(rawKey || '');
+    const map = {
+      Enter: '{ENTER}',
+      Tab: '{TAB}',
+      Backspace: '{BACKSPACE}',
+      Delete: '{DEL}',
+      Escape: '{ESC}',
+      ArrowUp: '{UP}',
+      ArrowDown: '{DOWN}',
+      ArrowLeft: '{LEFT}',
+      ArrowRight: '{RIGHT}',
+      Home: '{HOME}',
+      End: '{END}',
+      PageUp: '{PGUP}',
+      PageDown: '{PGDN}',
+      Space: ' ',
+    };
+    if (map[k]) return map[k];
+    if (/^F([1-9]|1[0-2])$/i.test(k)) return `{${k.toUpperCase()}}`;
+    if (k.length === 1) {
+      if ('+^%~(){}[]'.includes(k)) return `{${k}}`;
+      return k;
+    }
+    return '';
+  }
+
+  _escapeSendKeysText(text) {
+    return String(text || '')
+      .split('')
+      .map((ch) => ('+^%~(){}[]'.includes(ch) ? `{${ch}}` : ch))
+      .join('');
+  }
+
   registerKey(key, opts = {}) {
-    const k = String(key || '').slice(0, 32);
-    if (!k) return { ok: false };
+    const raw = String(key || '').slice(0, 32);
+    if (!raw) return { ok: false };
+    const loggedKey = opts.masked ? '*' : raw;
     const at = this._nowIso();
-    this.keyHistory.push({ at, key: k });
+    this.keyHistory.push({ at, key: loggedKey });
     if (this.keyHistory.length > 500) this.keyHistory.splice(0, this.keyHistory.length - 500);
-    this.learner.recordKey({ key: k, action: opts.action || 'press', method: opts.method || 'ui', at });
+    this.learner.recordKey({ key: loggedKey, action: opts.action || 'press', method: opts.method || 'ui', at });
     this._syncLearning();
-    return { ok: true, keyCount: this.learning.totalKeys };
+
+    let delivered = false;
+    if (!isVitest() && IS_WINDOWS && opts.deliver !== false) {
+      if (!this.client.detected || !Number(this.client.hwnd)) this.scanClient();
+      const token = this._toSendKeysToken(raw);
+      if (token && this.client.detected && this.client.running && Number(this.client.hwnd) > 0) {
+        try {
+          const hwnd = Number(this.client.hwnd || 0);
+          const safeToken = token.replace(/'/g, "''");
+          const ps =
+            'Add-Type -AssemblyName System.Windows.Forms; ' +
+            'Add-Type @"\n' +
+            'using System;\nusing System.Runtime.InteropServices;\n' +
+            'public class KFn { [DllImport("user32.dll")] public static extern void SwitchToThisWindow(IntPtr hWnd, bool fAltTab); }\n' +
+            '"@; ' +
+            `[KFn]::SwitchToThisWindow([IntPtr]${hwnd}, $true); Start-Sleep -Milliseconds 35; ` +
+            `[System.Windows.Forms.SendKeys]::SendWait('${safeToken}'); 'OK'`;
+          const out = String(this._runPs(ps) || '').trim();
+          delivered = out.includes('OK');
+        } catch (_e) {
+          delivered = false;
+        }
+      }
+    }
+    this._persistState();
+    return { ok: true, keyCount: this.learning.totalKeys, delivered };
+  }
+
+  sendText(text, opts = {}) {
+    const str = String(text || '');
+    const field = String(opts.field || '').toLowerCase();
+    const masked = Boolean(opts.masked || field === 'password');
+    if (opts.action === 'abrir-jogo') {
+      return this.sendClick(620, 530, 'left', { relX: 0.775, relY: 0.855, source: 'abrir-jogo-btn', target: 'Launcher: Abrir Jogo' });
+    }
+    if (!str && !opts.submit) return { ok: false, error: 'texto vazio' };
+
+    if (field === 'email') {
+      this.sendClick(400, 276, 'left', { relX: 0.5, relY: 0.445, source: 'login-email-field', target: 'Login: E-MAIL' });
+    } else if (field === 'password') {
+      this.sendClick(400, 338, 'left', { relX: 0.5, relY: 0.545, source: 'login-password-field', target: 'Login: PASSWORD' });
+    }
+
+    for (const ch of str.slice(0, 120)) {
+      this.registerKey(ch, { masked, deliver: false, method: 'type-input' });
+    }
+
+    let delivered = false;
+    if (!isVitest() && IS_WINDOWS) {
+      if (!this.client.detected || !Number(this.client.hwnd)) this.scanClient();
+      if (this.client.detected && this.client.running && Number(this.client.hwnd) > 0) {
+        try {
+          const hwnd = Number(this.client.hwnd || 0);
+          const escaped = this._escapeSendKeysText(str).replace(/'/g, "''");
+          const clearPrefix = opts.clear !== false && (field === 'email' || field === 'password') ? '^a{BACKSPACE}' : '';
+          const submitSuffix = opts.submit ? '{ENTER}' : '';
+          const ps =
+            'Add-Type -AssemblyName System.Windows.Forms; ' +
+            'Add-Type @"\n' +
+            'using System;\nusing System.Runtime.InteropServices;\n' +
+            'public class TFn {\n' +
+            '  [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr hWnd);\n' +
+            '  [DllImport("user32.dll")] public static extern void SwitchToThisWindow(IntPtr hWnd, bool fAltTab);\n' +
+            '  [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);\n' +
+            '  [DllImport("user32.dll")] public static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, UIntPtr dwExtraInfo);\n' +
+            '}\n' +
+            '"@; ' +
+            `$h = [IntPtr]${hwnd}; if ([TFn]::IsIconic($h)) { [TFn]::SwitchToThisWindow($h, $true); Start-Sleep -Milliseconds 120; } ` +
+            '[TFn]::keybd_event(0x12, 0, 0, [UIntPtr]::Zero); [TFn]::keybd_event(0x12, 0, 2, [UIntPtr]::Zero); ' +
+            '[TFn]::SetForegroundWindow($h) | Out-Null; Start-Sleep -Milliseconds 60; ' +
+            `[System.Windows.Forms.SendKeys]::SendWait('${clearPrefix}${escaped}${submitSuffix}'); 'OK'`;
+          const out = String(this._runPs(ps) || '').trim();
+          delivered = out.includes('OK');
+        } catch (_e) {
+          delivered = false;
+        }
+      }
+    }
+    if (opts.submit) {
+      this.registerKey('Enter', { deliver: false, method: 'login-submit' });
+    }
+    this._persistState();
+    return { ok: true, delivered, length: str.length, field: field || 'raw', keyCount: this.learning.totalKeys };
   }
 
   getLearning() {
@@ -538,15 +696,17 @@ class RubinotWin32Adapter {
   }
 
   _captureRealPng() {
-    // NUNCA aceitar PNGs minúsculos: superfícies DirectX retornam pelo
-    // PrintWindow um PNG preto vazio (~356 ou ~4435 bytes). Exigimos > 25 KB.
     const MIN_BYTES = MIN_REAL_BYTES; // 25000
     try {
-      // 1) CopyFromScreen do retângulo REAL da janela (GetWindowRect) — Windows,
-      //    cliente detectado/rodando e hwnd válido. Traz a janela para frente e
-      //    captura exatamente o seu retângulo na tela.
+      if (IS_WINDOWS && (!this.client.detected || !Number(this.client.hwnd))) {
+        this.scanClient();
+      }
+      // 1) Captura AO VIVO do retângulo REAL da janela (Launcher / Login / Jogo)
       if (IS_WINDOWS && this.client.detected && this.client.running && Number(this.client.hwnd) > 0) {
         const tmp = path.join(os.tmpdir(), `tbot_frame_${process.pid}.png`);
+        const cacheDir = path.join(__dirname, '..', '..', 'data', 'client-capture');
+        const cachePng = path.join(cacheDir, 'rubinot-client-real.png');
+        if (this._runPs === RubinotWin32Adapter.prototype._runPs && fs.existsSync(cachePng)) { try { const st = fs.statSync(cachePng); if (st.size > MIN_BYTES && Date.now() - st.mtimeMs < 900) return fs.readFileSync(cachePng); } catch (_e) {} }
         const hwnd = Number(this.client.hwnd || 0);
         const ps =
           'Add-Type -AssemblyName System.Drawing; ' +
@@ -555,48 +715,84 @@ class RubinotWin32Adapter {
           'using System.Runtime.InteropServices;' + '\n' +
           'public class PWin {' + '\n' +
           '  [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hWnd, out RECT r);' + '\n' +
-          '  [DllImport("user32.dll")] public static extern bool ShowWindowAsync(IntPtr hWnd, int nCmdShow);' + '\n' +
+          '  [DllImport("user32.dll")] public static extern bool GetCursorPos(out POINT p);' + '\n' +
+          '  [DllImport("user32.dll")] public static extern short GetAsyncKeyState(int vKey);' + '\n' +
+          '  [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr hWnd);' + '\n' +
+          '  [DllImport("user32.dll")] public static extern bool PrintWindow(IntPtr hWnd, IntPtr hdcBlt, uint nFlags);' + '\n' +
+          '  [DllImport("user32.dll")] public static extern bool BringWindowToTop(IntPtr hWnd);' + '\n' +
           '  [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);' + '\n' +
+          '  [DllImport("user32.dll")] public static extern void SwitchToThisWindow(IntPtr hWnd, bool fAltTab);' + '\n' +
+          '  [DllImport("user32.dll")] public static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, UIntPtr dwExtraInfo);' + '\n' +
           '  public struct RECT { public int Left, Top, Right, Bottom; }' + '\n' +
+          '  public struct POINT { public int X, Y; }' + '\n' +
           '}' + '\n' +
           `"@; ` +
           `$h = [IntPtr]${hwnd}; ` +
           'if ($h -ne [IntPtr]::Zero) { ' +
-          '[PWin]::ShowWindowAsync($h, 9) | Out-Null; ' +
-          '[PWin]::SetForegroundWindow($h) | Out-Null; ' +
-          'Start-Sleep -Milliseconds 120; ' +
+          'if ([PWin]::IsIconic($h)) { [PWin]::SwitchToThisWindow($h, $true); Start-Sleep -Milliseconds 180; } ' +
           '$r = New-Object PWin+RECT; [PWin]::GetWindowRect($h, [ref]$r) | Out-Null; ' +
+          '$pt = New-Object PWin+POINT; [PWin]::GetCursorPos([ref]$pt) | Out-Null; ' +
+          '$lb = ([PWin]::GetAsyncKeyState(1) -band 0x8001) -ne 0; ' +
+          '$rb = ([PWin]::GetAsyncKeyState(2) -band 0x8001) -ne 0; ' +
           '$w = $r.Right - $r.Left; $hh = $r.Bottom - $r.Top; ' +
           'if ($w -gt 120 -and $hh -gt 120 -and $r.Left -gt -10000) { ' +
           '$bmp = New-Object System.Drawing.Bitmap($w, $hh); ' +
           '$g = [System.Drawing.Graphics]::FromImage($bmp); ' +
+          '$hdc = $g.GetHdc(); $pwOk = [PWin]::PrintWindow($h, $hdc, 2); $g.ReleaseHdc($hdc); ' +
+          `$bmp.Save('${tmp.replace(/\\/g, '\\\\')}', [System.Drawing.Imaging.ImageFormat]::Png); ` +
+          'if (-not $pwOk -or (Get-Item "' + tmp.replace(/\\/g, '\\\\') + '").Length -lt 25000) { ' +
+          '[PWin]::keybd_event(0x12, 0, 0, [UIntPtr]::Zero); [PWin]::keybd_event(0x12, 0, 2, [UIntPtr]::Zero); ' +
+          '[PWin]::BringWindowToTop($h) | Out-Null; [PWin]::SetForegroundWindow($h) | Out-Null; Start-Sleep -Milliseconds 120; ' +
           '$g.CopyFromScreen($r.Left, $r.Top, 0, 0, (New-Object System.Drawing.Size($w, $hh))); ' +
           `$bmp.Save('${tmp.replace(/\\/g, '\\\\')}', [System.Drawing.Imaging.ImageFormat]::Png); ` +
+          '} ' +
           '$g.Dispose(); $bmp.Dispose(); ' +
-          "'SAVED' } else { 'EMPTY' } } else { 'NOHWND' }";
+          'Write-Output ("SAVED|{0},{1},{2},{3}|{4},{5}|{6},{7}" -f $r.Left,$r.Top,$w,$hh,$pt.X,$pt.Y,$lb,$rb) } else { "EMPTY" } } else { "NOHWND" }';
         const out = String(this._runPs(ps, 6000) || '').trim();
+        if (out.includes('SAVED|')) {
+          const parts = out.split('|');
+          const rectParts = (parts[1] || '').split(',').map(Number);
+          const curParts = (parts[2] || '').split(',').map(Number);
+          const btnParts = (parts[3] || '').split(',');
+          if (rectParts.length === 4 && rectParts[2] > 100 && rectParts[3] > 100) {
+            const [rx, ry, rw, rh] = rectParts;
+            this.client.windowRect = { left: rx, top: ry, width: rw, height: rh };
+            const [cx, cy] = curParts;
+            if (cx >= rx && cx <= rx + rw && cy >= ry && cy <= ry + rh) {
+              const normX = Math.round(((cx - rx) / rw) * 800);
+              const normY = Math.round(((cy - ry) / rh) * 620);
+              if (!this._lastNativeCursor || Math.hypot(normX - this._lastNativeCursor.x, normY - this._lastNativeCursor.y) >= 6) {
+                this._lastNativeCursor = { x: normX, y: normY };
+                this.registerMove(normX, normY);
+              }
+              if (btnParts[0] === 'True' || btnParts[1] === 'True') {
+                const nativeBtn = btnParts[1] === 'True' ? 'right' : 'left';
+                const entry = { at: this._nowIso(), x: normX, y: normY, button: nativeBtn, source: 'native-client', target: this.client.windowTitle || 'RubinOT Client' };
+                this.clickHistory.push(entry);
+                this.clickCount += 1;
+                this.learner.recordClick(entry);
+                this._syncLearning();
+              }
+            }
+          }
+        }
         if (out.includes('SAVED') && fs.existsSync(tmp)) {
           const buf = fs.readFileSync(tmp);
-          // Somente PNGs reais (> 25 KB) são aceitos — nada de preto vazio.
           if (buf.length > MIN_BYTES) {
             try {
-              fs.unlinkSync(tmp);
-            } catch (_e) {
-              /* ignore */
-            }
+              fs.mkdirSync(cacheDir, { recursive: true });
+              fs.writeFileSync(cachePng, buf);
+            } catch (_e) { /* ignore */ }
+            try { fs.unlinkSync(tmp); } catch (_e) { /* ignore */ }
             this._lastRealCaptureError = null;
             return buf;
           }
-          try {
-            fs.unlinkSync(tmp);
-          } catch (_e) {
-            /* ignore */
-          }
+          try { fs.unlinkSync(tmp); } catch (_e) { /* ignore */ }
         }
       }
 
-      // 2) PNG mais recente da pasta de screenshots do RubinOT (também > 25 KB)
-      if (IS_WINDOWS && fs.existsSync(RUBINOT_SCREENSHOTS_DIR)) {
+      // 2) Fallback: PNG mais recente da pasta de screenshots do RubinOT APENAS quando nenhuma janela ao vivo estiver aberta
+      if (IS_WINDOWS && (!this.client.detected || !this.client.running) && fs.existsSync(RUBINOT_SCREENSHOTS_DIR)) {
         const files = fs
           .readdirSync(RUBINOT_SCREENSHOTS_DIR)
           .filter((f) => /\.(png|jpg|jpeg)$/i.test(f))

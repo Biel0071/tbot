@@ -131,25 +131,7 @@ function serveStatic(res, filePath) {
 function captureRealClientPng() {
   if (process.env.VITEST === 'true') return null; // testes: sempre SVG
 
-  // 1) screenshots nativos do RubinOT
-  const rubiShots = 'C:\\Program Files (x86)\\RubinOT 2.0\\bin\\screenshots';
-  try {
-    if (fs.existsSync(rubiShots)) {
-      const files = fs
-        .readdirSync(rubiShots)
-        .filter((f) => /\.png$/i.test(f))
-        .map((f) => ({ f, t: fs.statSync(path.join(rubiShots, f)).mtimeMs }))
-        .sort((a, b) => b.t - a.t);
-      for (const { f } of files) {
-        const buf = fs.readFileSync(path.join(rubiShots, f));
-        if (buf.length > MIN_REAL_FRAME_BYTES) return buf;
-      }
-    }
-  } catch (_e) {
-    /* pasta inacessível — segue para o próximo fallback */
-  }
-
-  // 2) cache local de captura real (>25KB)
+  // 1) cache local de captura ao vivo (>25KB) — prioridade máxima
   try {
     if (fs.existsSync(REAL_CLIENT_PNG)) {
       const cached = fs.readFileSync(REAL_CLIENT_PNG);
@@ -159,7 +141,7 @@ function captureRealClientPng() {
     /* ignore */
   }
 
-  // 3) CopyFromScreen via PowerShell (Windows real)
+  // 2) CopyFromScreen via PowerShell (Windows real)
   try {
     if (process.platform !== 'win32') return null;
     fs.mkdirSync(REAL_CLIENT_PNG_DIR, { recursive: true });
@@ -188,6 +170,24 @@ function captureRealClientPng() {
     }
   } catch (_e) {
     /* PowerShell indisponível — fallback SVG */
+  }
+
+  // 3) screenshots nativos do RubinOT (último recurso quando não há janela ao vivo)
+  const rubiShots = 'C:\\Program Files (x86)\\RubinOT 2.0\\bin\\screenshots';
+  try {
+    if (fs.existsSync(rubiShots)) {
+      const files = fs
+        .readdirSync(rubiShots)
+        .filter((f) => /\.png$/i.test(f))
+        .map((f) => ({ f, t: fs.statSync(path.join(rubiShots, f)).mtimeMs }))
+        .sort((a, b) => b.t - a.t);
+      for (const { f } of files) {
+        const buf = fs.readFileSync(path.join(rubiShots, f));
+        if (buf.length > MIN_REAL_FRAME_BYTES) return buf;
+      }
+    }
+  } catch (_e) {
+    /* ignore */
   }
 
   return null;
@@ -254,6 +254,13 @@ async function handleRequest(manager, req, res) {
   if (pathname === '/api/client/key' && req.method === 'POST') {
     const body = await readBody(req);
     sendJson(res, 200, manager.registerKey(body));
+    return;
+  }
+
+  if (pathname === '/api/client/type' && req.method === 'POST') {
+    const body = await readBody(req);
+    const r = manager.sendClientText(body);
+    sendJson(res, r.ok ? 200 : 400, r);
     return;
   }
 
@@ -370,10 +377,41 @@ if (require.main === module) {
   const port = Number.isFinite(portFromArg) ? portFromArg : parseInt(process.env.PORT || '', 10) || DEFAULT_PORT;
 
   const server = createServer();
-  server.listen(port, '127.0.0.1', () => {
+  server.listen(port, () => {
     // eslint-disable-next-line no-console
     console.log(`T BOT — Autonomous Tibia Bot (MVP 1.0) rodando em http://127.0.0.1:${port} (preview ?charFull=1)`);
+    setTimeout(() => {
+      try {
+        server.manager.scanClient();
+        server.manager.getClientFrame();
+      } catch (_e) { /* ignore */ }
+    }, 200);
   });
+
+  const cmdFile = path.join(ROOT, 'data', 'cmd.json');
+  const resFile = path.join(ROOT, 'data', 'cmd.result.json');
+  setInterval(() => {
+    try {
+      if (fs.existsSync(cmdFile)) {
+        const raw = fs.readFileSync(cmdFile, 'utf8');
+        try { fs.unlinkSync(cmdFile); } catch (_e) { /* ignore */ }
+        const payload = JSON.parse(raw);
+        let out;
+        if (payload.cmd === 'frame') {
+          const f = server.manager.getClientFrame();
+          out = { ok: true, source: f.source, contentType: f.contentType, bytes: Buffer.isBuffer(f.body) ? f.body.length : String(f.body).length, client: server.manager.adapter.client };
+        } else if (payload.cmd === 'verify') {
+          const { spawn } = require('child_process');
+          const child = spawn(process.execPath, [payload.script], { detached: true, stdio: 'ignore' });
+          child.unref();
+          out = { ok: true, cmd: 'verify', pid: child.pid };
+        } else {
+          out = server.manager.control(payload);
+        }
+        fs.writeFileSync(resFile, JSON.stringify({ at: new Date().toISOString(), ...out }, null, 2));
+      }
+    } catch (_e) { /* ignore */ }
+  }, 800).unref();
 
   const shutdown = () => {
     server.close(() => process.exit(0));

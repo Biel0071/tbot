@@ -45,6 +45,14 @@
     sbDot: document.getElementById('sbDot'),
     sbStatus: document.getElementById('sbStatus'),
     sbFrame: document.getElementById('sbFrame'),
+    btnTopLaunch: document.getElementById('btnTopLaunchClient'),
+    stageBadge: document.getElementById('clientStageBadge'),
+    btnAbrirJogo: document.getElementById('btnClickAbrirJogo'),
+    inpEmail: document.getElementById('inpClientEmail'),
+    inpPassword: document.getElementById('inpClientPassword'),
+    btnTypeLogin: document.getElementById('btnTypeLogin'),
+    btnSendEnter: document.getElementById('btnSendEnter'),
+    btnShowLogoCard: document.getElementById('btnShowLogoCard'),
   };
 
   const state = {
@@ -130,22 +138,22 @@
       els.sbFrame && (els.sbFrame.textContent = `frame ao vivo #${state.frameSeq} · cliente no centro`);
     });
 
-  // Clique na imagem do frame → POST /api/client/click com coords mapeadas
+  // Clique na imagem do frame → POST /api/client/click com coords mapeadas (relX/relY)
   if (els.frame) {
     els.frame.addEventListener('click', (ev) => {
+      els.frame.focus();
       const rect = els.frame.getBoundingClientRect();
       const relX = (ev.clientX - rect.left) / Math.max(1, rect.width);
       const relY = (ev.clientY - rect.top) / Math.max(1, rect.height);
       const x = Math.round(relX * 800); // espaço lógico do cliente (SVG 800x620)
       const y = Math.round(relY * 620);
       const button = ev.button === 2 ? 'right' : ev.button === 1 ? 'middle' : 'left';
-      apiPost('/api/client/click', { x, y, button, source: 'live-frame-click' })
+      apiPost('/api/client/click', { x, y, relX, relY, button, source: 'live-frame-click' })
         .then((r) => {
           if (r && r.ok) {
-            logLine(`clique registrado (${x},${y}) ${button} → total ${r.clickCount}`);
+            logLine(`clique no cliente (${x},${y}) [${Math.round(relX * 100)}%,${Math.round(relY * 100)}%] → total ${r.clickCount}`);
             refreshLearning();
-            // mostra imediatamente o clique no frame (trail do SVG)
-            setTimeout(() => refreshLiveFrame(false), 120);
+            setTimeout(() => refreshLiveFrame(true), 160);
           }
         })
         .catch((e) => logLine(`erro click: ${e.message}`));
@@ -246,12 +254,17 @@
     });
   }
 
-  // Teclas registradas em tempo real para o módulo de aprendizado
+  // Teclas registradas em tempo real e enviadas direto para o RubinOT Client
   window.addEventListener('keydown', (ev) => {
     if (ev.repeat) return;
     const tag = (document.activeElement && document.activeElement.tagName) || '';
     if (tag === 'INPUT' || tag === 'TEXTAREA') return;
-    apiPost('/api/client/key', { key: ev.key }).catch(() => {});
+    apiPost('/api/client/key', { key: ev.key })
+      .then(() => {
+        refreshLearning();
+        setTimeout(() => refreshLiveFrame(false), 180);
+      })
+      .catch(() => {});
     if (ev.key === 'Escape') showLogoAgain();
   });
 
@@ -261,10 +274,19 @@
     try {
       const st = await apiGet('/api/status');
       const c = st.client || {};
+      const wasOpen = state.clientOpen;
       state.clientOpen = !!(c.detected && c.running);
       if (els.spDetected) els.spDetected.textContent = c.detected ? 'SIM ✔' : 'NÃO ✘';
       if (els.spPid) els.spPid.textContent = c.pid != null ? String(c.pid) : '—';
       if (els.spTitle) els.spTitle.textContent = c.windowTitle || '—';
+      if (els.stageBadge) {
+        const stg = c.stage === 'launcher' ? 'Launcher (Abrir Jogo)' : c.stage === 'ingame' ? 'Jogo Ativo' : state.clientOpen ? 'Login (E-mail / Senha)' : 'Cliente Fechado';
+        els.stageBadge.textContent = `Etapa: ${stg}`;
+      }
+      if (state.clientOpen && !wasOpen) {
+        refreshLiveFrame(true);
+        hideLogoAfterLaunch();
+      }
       if (els.sbDot) els.sbDot.classList.toggle('on', !!c.detected || st.status === 'running');
       if (els.sbStatus) els.sbStatus.textContent = `runtime ${st.status} · cliente ${state.clientOpen ? 'aberto' : 'fechado'}`;
       const ctr = st.counters || {};
@@ -294,6 +316,56 @@
   // -------------------------------------------------------- wiring -------
 
   els.btnToggleCharFull && els.btnToggleCharFull.addEventListener('click', toggleCharFull);
+  els.btnTopLaunch && els.btnTopLaunch.addEventListener('click', () => launchOrFocusClient('top-btn'));
+  els.btnShowLogoCard && els.btnShowLogoCard.addEventListener('click', showLogoAgain);
+  els.btnAbrirJogo &&
+    els.btnAbrirJogo.addEventListener('click', async () => {
+      toast('Clicando em "Abrir Jogo" no Launcher do RubinOT…');
+      logLine('POST /api/client/click (Abrir Jogo no Launcher 77.5%, 85.5%)');
+      await apiPost('/api/client/click', { action: 'abrir-jogo', x: 620, y: 530, relX: 0.775, relY: 0.855 }).catch(() => {});
+      hideLogoAfterLaunch();
+      setTimeout(() => refreshLiveFrame(true), 400);
+      refreshLearning();
+    });
+
+  async function submitClientLogin() {
+    const email = els.inpEmail ? els.inpEmail.value.trim() : '';
+    const pwd = els.inpPassword ? els.inpPassword.value : '';
+    if (!email && !pwd) {
+      toast('Preencha o E-mail e/ou a Senha para digitar no cliente RubinOT');
+      return;
+    }
+    hideLogoAfterLaunch();
+    if (email) {
+      logLine(`digitando E-mail no campo E-MAIL do RubinOT Client (${email.length} chars)…`);
+      await apiPost('/api/client/type', { field: 'email', text: email, clear: true }).catch(() => {});
+    }
+    if (pwd) {
+      logLine(`digitando Senha mascarada (${pwd.length} chars) + LOGIN no RubinOT Client…`);
+      await apiPost('/api/client/type', { field: 'password', text: pwd, masked: true, clear: true, submit: true }).catch(() => {});
+      if (els.inpPassword) els.inpPassword.value = '';
+    }
+    toast('Credenciais digitadas diretamente no RubinOT Client ✔');
+    setTimeout(() => refreshLiveFrame(true), 350);
+    refreshLearning();
+  }
+
+  els.btnTypeLogin && els.btnTypeLogin.addEventListener('click', submitClientLogin);
+  els.inpPassword &&
+    els.inpPassword.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Enter') {
+        ev.preventDefault();
+        submitClientLogin();
+      }
+    });
+  els.btnSendEnter &&
+    els.btnSendEnter.addEventListener('click', async () => {
+      await apiPost('/api/client/key', { key: 'Enter' }).catch(() => {});
+      logLine('tecla Enter enviada ao RubinOT Client');
+      setTimeout(() => refreshLiveFrame(false), 200);
+      refreshLearning();
+    });
+
   els.railLaunch &&
     els.railLaunch.addEventListener('click', (ev) => {
       ev.preventDefault();
@@ -325,10 +397,11 @@
 
   applyCharFullscreenFromUrl();
   logLine('UI inicializada — logo central pronta para abrir/focar o RubinOT Client');
+  refreshLiveFrame(false);
   refreshStatus();
-  setInterval(refreshStatus, 4000);
-  // Frame ao vivo periódico (2.5s) apenas quando o cliente foi aberto/focado
+  setInterval(refreshStatus, 3000);
+  // Frame ao vivo periódico (2.0s) quando o cliente está aberto
   setInterval(() => {
     if (state.clientOpen) refreshLiveFrame(false);
-  }, 2500);
+  }, 2000);
 })();
