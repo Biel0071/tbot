@@ -14,6 +14,7 @@
 const fs = require('fs');
 const path = require('path');
 const { RubinotWin32Adapter } = require('../adapters/rubinot-win32');
+const { InGameEngine } = require('../bot/in-game-engine');
 
 const DATA_DIR = path.join(__dirname, '..', '..', 'data');
 
@@ -40,6 +41,7 @@ class RuntimeManager {
       win32Input: true,
     };
     this._lastScanMs = 0;
+    this.botEngine = new InGameEngine(this, opts.botEngineOpts || {});
     this._persistStatus();
   }
 
@@ -106,6 +108,7 @@ class RuntimeManager {
       bot: this.status === 'idle' ? 'stopped' : this.status,
       state: this.status.toUpperCase(),
       modules: this.modules,
+      inGame: this.botEngine ? this.botEngine.getStatus() : null,
       learning: this.adapter.getLearning().summary,
       client: this.adapter.client,
       counters: {
@@ -291,6 +294,14 @@ class RuntimeManager {
       case 'restart':
         setTimeout(() => process.exit(0), 120).unref();
         return { ok: true, cmd, message: 'restarting server' };
+      case 'bot-config':
+        return { ok: true, cmd, ...this.botEngine.configure(payload) };
+      case 'bot-snapshot':
+        return { ok: true, cmd, snapshot: this.botEngine.updateSnapshot(payload) };
+      case 'bot-tick':
+        return { ok: true, cmd, tick: this.botEngine.tick() };
+      case 'bot-status':
+        return { ok: true, cmd, inGame: this.botEngine.getStatus() };
       case 'modules': {
         if (payload && typeof payload === 'object') {
           for (const k of Object.keys(this.modules)) {
@@ -305,7 +316,7 @@ class RuntimeManager {
           ok: false,
           status: 400,
           error: `comando desconhecido: '${cmd || '(vazio)'}'`,
-          allowed: ['start', 'stop', 'pause', 'launch', 'scan', 'click', 'key', 'move', 'modules'],
+          allowed: ['start', 'stop', 'pause', 'launch', 'scan', 'click', 'key', 'type', 'move', 'modules', 'bot-config', 'bot-snapshot', 'bot-tick', 'bot-status'],
         };
     }
   }

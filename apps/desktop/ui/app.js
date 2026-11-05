@@ -53,6 +53,11 @@
     btnTypeLogin: document.getElementById('btnTypeLogin'),
     btnSendEnter: document.getElementById('btnSendEnter'),
     btnShowLogoCard: document.getElementById('btnShowLogoCard'),
+    btnQuickHeal: document.getElementById('btnQuickHeal'),
+    btnQuickMana: document.getElementById('btnQuickMana'),
+    btnQuickAtk: document.getElementById('btnQuickAtk'),
+    spHealManaCount: document.getElementById('spHealManaCount'),
+    spLastBotAction: document.getElementById('spLastBotAction'),
   };
 
   const state = {
@@ -294,6 +299,10 @@
       if (els.spMoves) els.spMoves.textContent = String(ctr.moves || 0);
       if (els.spKeys) els.spKeys.textContent = String(ctr.keys || 0);
       if (els.spLaunches) els.spLaunches.textContent = String(ctr.launches || 0);
+      if (st.inGame && st.inGame.stats) {
+        if (els.spHealManaCount) els.spHealManaCount.textContent = (st.inGame.stats.healsCount || 0) + ' / ' + (st.inGame.stats.manasCount || 0);
+        if (els.spLastBotAction) els.spLastBotAction.textContent = st.inGame.stats.lastAction || 'Idle';
+      }
     } catch (_e) {
       if (els.sbStatus) els.sbStatus.textContent = 'runtime offline (npm start → :8791)';
     }
@@ -365,6 +374,9 @@
       setTimeout(() => refreshLiveFrame(false), 200);
       refreshLearning();
     });
+  els.btnQuickHeal && els.btnQuickHeal.addEventListener('click', async () => { await apiPost('/api/client/key', { key: 'F1', deliver: true }).catch(() => {}); logLine('Cura F1 enviada'); refreshLearning(); });
+  els.btnQuickMana && els.btnQuickMana.addEventListener('click', async () => { await apiPost('/api/client/key', { key: 'F3', deliver: true }).catch(() => {}); logLine('Mana F3 enviada'); refreshLearning(); });
+  els.btnQuickAtk && els.btnQuickAtk.addEventListener('click', async () => { await apiPost('/api/client/key', { key: 'Space', deliver: true }).catch(() => {}); logLine('Attack Space enviado'); refreshLearning(); });
 
   els.railLaunch &&
     els.railLaunch.addEventListener('click', (ev) => {

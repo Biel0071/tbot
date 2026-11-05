@@ -381,6 +381,85 @@ describe('Fluxo Launcher (Abrir Jogo) -> Login (Digitar E-mail e Senha) -> Apren
     expect(html).toContain('id="inpClientPassword"');
     expect(html).toContain('id="btnTypeLogin"');
   });
+
+  describe('InGameEngine — Loop Autônomo de Combate e Cura', () => {
+    it('GET /api/bot/status retorna o estado da engine in-game com snapshot e cooldowns', async () => {
+      const res = await request('GET', `${baseUrl}/api/bot/status`);
+      expect(res.status).toBe(200);
+      expect(res.json.ok).toBe(true);
+      expect(res.json.config).toBeDefined();
+      expect(res.json.snapshot).toBeDefined();
+      expect(res.json.stats).toBeDefined();
+    });
+
+    it('POST /api/bot/configure atualiza thresholds de cura e mana', async () => {
+      const res = await request('POST', `${baseUrl}/api/bot/configure`, {
+        healMinHp: 90,
+        healCritHp: 40,
+        manaMinMp: 55,
+      });
+      expect(res.status).toBe(200);
+      expect(res.json.ok).toBe(true);
+      expect(res.json.config.healMinHp).toBe(90);
+      expect(res.json.config.healCritHp).toBe(40);
+      expect(res.json.config.manaMinMp).toBe(55);
+    });
+
+    it('InGameEngine.tick() despacha P1 (Cura Crítica F2) quando HP <= 40%', async () => {
+      server.manager.status = 'running';
+      server.manager.botEngine.cooldowns.potion = 0;
+      server.manager.botEngine.updateSnapshot({ hpPercent: 35, manaPercent: 100 });
+      const res = await request('POST', `${baseUrl}/api/bot/tick`, {});
+      expect(res.status).toBe(200);
+      expect(res.json.tick.action).toBe('crit-heal');
+      expect(res.json.tick.key).toBe('F2');
+    });
+
+    it('InGameEngine.tick() despacha P2 (Cura Regular F1) quando HP <= 90%', async () => {
+      server.manager.status = 'running';
+      server.manager.botEngine.cooldowns.spell = 0;
+      server.manager.botEngine.updateSnapshot({ hpPercent: 70, manaPercent: 100 });
+      const res = await request('POST', `${baseUrl}/api/bot/tick`, {});
+      expect(res.status).toBe(200);
+      expect(res.json.tick.action).toBe('spell-heal');
+      expect(res.json.tick.key).toBe('F1');
+    });
+
+    it('InGameEngine.tick() despacha P3 (Mana Potion F3) quando MP <= 55%', async () => {
+      server.manager.status = 'running';
+      server.manager.botEngine.cooldowns.potion = 0;
+      server.manager.botEngine.updateSnapshot({ hpPercent: 100, manaPercent: 45 });
+      const res = await request('POST', `${baseUrl}/api/bot/tick`, {});
+      expect(res.status).toBe(200);
+      expect(res.json.tick.action).toBe('mana-potion');
+      expect(res.json.tick.key).toBe('F3');
+    });
+
+    it('InGameEngine.tick() despacha P4 (Auto-Attack Space) quando sem target', async () => {
+      server.manager.status = 'running';
+      server.manager.botEngine.cooldowns.attack = 0;
+      server.manager.botEngine.updateSnapshot({ hpPercent: 100, manaPercent: 100, target: null });
+      const res = await request('POST', `${baseUrl}/api/bot/tick`, {});
+      expect(res.status).toBe(200);
+      expect(res.json.tick.action).toBe('auto-attack');
+      expect(res.json.tick.key).toBe('Space');
+    });
+
+    it('InGameEngine.tick() despacha P5 (Cavebot Walk) e incrementa telemetria no BehaviorLearner', async () => {
+      server.manager.status = 'running';
+      server.manager.botEngine.cooldowns.walk = 0;
+      server.manager.botEngine.cooldowns.spell = Date.now() + 9999;
+      server.manager.botEngine.cooldowns.potion = Date.now() + 9999;
+      server.manager.botEngine.cooldowns.attack = Date.now() + 9999;
+      server.manager.botEngine.updateSnapshot({ hpPercent: 100, manaPercent: 100, target: 'Dragon' });
+
+      const prevKeys = server.manager.adapter.learning.totalKeys;
+      const res = await request('POST', `${baseUrl}/api/bot/tick`, {});
+      expect(res.status).toBe(200);
+      expect(res.json.tick.action).toBe('cavebot-walk');
+      expect(server.manager.adapter.learning.totalKeys).toBeGreaterThan(prevKeys);
+    });
+  });
 });
 
 // Utilitário: PNG válido com ruído pseudoaleatório suficiente para >N bytes

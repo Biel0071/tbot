@@ -314,6 +314,9 @@
           <input id="inpClientPassword" type="password" placeholder="Senha (digitar no cliente)" autocomplete="off" />
           <button id="btnTypeLogin" type="button" class="primary" title="Clica nos campos E-MAIL e PASSWORD do cliente, digita e faz Login">🔑 Digitar Senha &amp; Logar</button>
           <button id="btnSendEnter" type="button" title="Enviar tecla Enter para o cliente">⏎ Enter</button>
+          <button id="btnQuickHeal" type="button" style="background:#3a1818; border-color:#e05252; color:#ff9494;" title="Testar Auto-Heal (F1)">❤ Heal (F1)</button>
+          <button id="btnQuickMana" type="button" style="background:#15283a; border-color:#388bfd; color:#79c0ff;" title="Testar Auto-Mana (F3)">💧 Mana (F3)</button>
+          <button id="btnQuickAtk" type="button" style="background:#3a2e15; border-color:#d29922; color:#e3b341;" title="Testar Auto-Attack (Space)">⚔ Atk (Space)</button>
           <button id="btnShowLogoCard" type="button" title="Mostrar card central da Logo">🏷 Logo Central</button>
         </div>
 
@@ -340,6 +343,13 @@
       <div class="kv"><span>Detecção Win32</span><b id="spDetected">—</b></div>
       <div class="kv"><span>PID</span><b id="spPid">—</b></div>
       <div class="kv"><span>Janela</span><b id="spTitle">—</b></div>
+      <h3>Loop Autônomo In-Game</h3>
+      <div class="kv"><span>Auto-Heal (F1/F2)</span><b id="spAutoHeal" style="color:#56d364;">ATIVO</b></div>
+      <div class="kv"><span>Auto-Mana (F3)</span><b id="spAutoMana" style="color:#56d364;">ATIVO</b></div>
+      <div class="kv"><span>Target / Atk</span><b id="spAutoAttack" style="color:#ffd35c;">SPACE</b></div>
+      <div class="kv"><span>Cavebot Rota</span><b id="spCavebot" style="color:#56d364;">ATIVO</b></div>
+      <div class="kv"><span>Curas / Manas</span><b id="spHealManaCount">0 / 0</b></div>
+      <div class="kv"><span>Última Ação</span><b id="spLastBotAction">—</b></div>
       <h3>Aprendizado em tempo real</h3>
       <div class="kv"><span>Cliques</span><b id="spClicks">0</b></div>
       <div class="kv"><span>Movimentos</span><b id="spMoves">0</b></div>

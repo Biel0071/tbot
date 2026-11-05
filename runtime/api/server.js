@@ -268,6 +268,27 @@ async function handleRequest(manager, req, res) {
     sendJson(res, 200, manager.getLearning());
     return;
   }
+  if (pathname === '/api/bot/status' && req.method === 'GET') {
+    sendJson(res, 200, manager.botEngine ? manager.botEngine.getStatus() : { ok: false });
+    return;
+  }
+  if (pathname === '/api/bot/configure' && req.method === 'POST') {
+    const body = await readBody(req);
+    const r = manager.botEngine ? manager.botEngine.configure(body) : { ok: false };
+    sendJson(res, 200, r);
+    return;
+  }
+  if (pathname === '/api/bot/snapshot' && req.method === 'POST') {
+    const body = await readBody(req);
+    const r = manager.botEngine ? manager.botEngine.updateSnapshot(body) : { ok: false };
+    sendJson(res, 200, { ok: true, snapshot: r });
+    return;
+  }
+  if (pathname === '/api/bot/tick' && req.method === 'POST') {
+    const r = manager.botEngine ? manager.botEngine.tick() : { action: 'none' };
+    sendJson(res, 200, { ok: true, tick: r });
+    return;
+  }
 
   if (pathname === '/api/client/scan' && req.method === 'POST') {
     const client = manager.scanClient();
