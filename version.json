@@ -1,0 +1,7 @@
+{
+  "product": "TBot",
+  "version": "1.0.0",
+  "channel": "stable",
+  "build_target": "windows-amd64",
+  "min_launcher_version": "1.0.0"
+}
