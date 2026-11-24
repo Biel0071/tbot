@@ -1,0 +1,113 @@
+name: TBot Windows Release Build
+
+# Compila TBot.exe + TBot-Launcher.exe + TBot-Setup.exe em runner Windows.
+# O VPS Linux NUNCA compila binários Windows — apenas distribui os artefatos.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Versão do release (ex.: 1.1.0)'
+        required: true
+      channel:
+        description: 'Canal'
+        type: choice
+        options: [stable, beta]
+        default: stable
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    env:
+      INNO_VERSION: 6.3.3
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Resolve version
+        shell: pwsh
+        run: |
+          if ("${{ github.event_name }}" -eq "workflow_dispatch") {
+            echo "TBOT_VERSION=${{ inputs.version }}" >> $env:GITHUB_ENV
+            echo "TBOT_CHANNEL=${{ inputs.channel }}" >> $env:GITHUB_ENV
+          } else {
+            echo "TBOT_VERSION=${GITHUB_REF_NAME#v}" >> $env:GITHUB_ENV
+            echo "TBOT_CHANNEL=stable" >> $env:GITHUB_ENV
+          }
+
+      - name: Write version.json
+        shell: pwsh
+        run: |
+          @{ product='TBot'; version=$env:TBOT_VERSION; channel=$env:TBOT_CHANNEL;
+             build_target='windows-amd64'; min_launcher_version='1.0.0' } |
+            ConvertTo-Json | Set-Content version.json -Encoding utf8
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r tbot/requirements.txt pyinstaller
+
+      - name: Build TBot.exe (app principal)
+        run: >
+          pyinstaller --noconfirm --onedir --windowed --name TBot
+          --paths tbot tbot/main.py
+
+      - name: Build TBot-Launcher.exe (independente)
+        run: >
+          pyinstaller --noconfirm --onefile --windowed --name TBot-Launcher
+          --paths tbot tbot/launcher/main.py
+
+      - name: Prepare dist layout
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path build_out\TBot | Out-Null
+          Copy-Item dist\TBOT\* build_out\TBot\ -Recurse -Force
+          Copy-Item dist\TBOT-Launcher\TBOT-Launcher.exe build_out\ -Force
+
+      - name: Pack update release (zip + manifest SHA256)
+        run: python tbot/update_server/deployment/pack_release.py --dist build_out/TBot --version ${{ env.TBOT_VERSION }} --out releases --channel ${{ env.TBOT_CHANNEL }}
+
+      - name: Install Inno Setup
+        run: choco install innosetup --version=%INNO_VERSION% -y
+
+      - name: Build installer TBot-Setup.exe
+        shell: pwsh
+        run: |
+          (Get-Content tbot/build/installer.iss) -replace 'AppVersion=.*', "AppVersion=$env:TBOT_VERSION" `
+            -replace 'OutputBaseFilename=.*', "OutputBaseFilename=TBot-Setup-v$env:TBOT_VERSION" `
+            -replace 'Source: "dist\\TBOT\\', 'Source: "build_out\TBOT\' |
+            Set-Content build_out\installer_generated.iss -Encoding utf8
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" build_out\installer_generated.iss
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: tbot-windows-${{ env.TBOT_VERSION }}
+          path: |
+            build_out/TBot-Setup-v*.exe
+            releases/${{ env.TBOT_VERSION }}/tbot-*.zip
+            releases/${{ env.TBOT_VERSION }}/manifest.json
+
+      # Publicação no Update Server central é explícita e autenticada:
+      - name: Push release to TBot Update Server
+        if: ${{ vars.PUSH_TO_UPDATE_SERVER == 'true' }}
+        shell: pwsh
+        run: |
+          $base = "${{ secrets.TBOT_SERVER_URL }}"
+          $hdr  = @{ Authorization = "Bearer ${{ secrets.TBOT_ADMIN_TOKEN }}" }
+          # Ingest autenticado: manifesto primeiro, depois pacote.
+          # O servidor recusa o pacote se o SHA256 não conferir com o manifesto.
+          Invoke-RestMethod -Method Post -Uri "$base/api/v1/admin/ingest/$env:TBOT_VERSION`?file=manifest" `
+            -Headers $hdr -ContentType 'application/json' `
+            -InFile "releases/$env:TBOT_VERSION/manifest.json"
+          Invoke-RestMethod -Method Post -Uri "$base/api/v1/admin/ingest/$env:TBOT_VERSION`?file=package" `
+            -Headers $hdr -ContentType 'application/zip' `
+            -InFile "releases/$env:TBOT_VERSION/tbot-$env:TBOT_VERSION.zip"
