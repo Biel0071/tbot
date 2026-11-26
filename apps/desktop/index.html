@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>T BOT — Autonomous Tibia Bot (MVP 1.0) · RubinOT Client</title>
+  <style>
+    :root {
+      --bg: #0d0b06;
+      --panel: #171309;
+      --panel-2: #1f1a0e;
+      --gold: #c9a24b;
+      --gold-bright: #ffd35c;
+      --ink: #e8dcc0;
+      --muted: #8a7a55;
+      --danger: #b32d2d;
+      --ok: #39d353;
+      --border: #3a2f18;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; }
+    body {
+      background: var(--bg);
+      color: var(--ink);
+      font-family: "Segoe UI", Consolas, monospace;
+      overflow: hidden;
+    }
+
+    /* ================================================================
+       LAYOUT GRID DO APP — 3 colunas: rail | palco | painel
+       ================================================================ */
+    #app {
+      display: grid;
+      grid-template-columns: 210px 1fr 260px;
+      grid-template-rows: 34px 1fr 38px;
+      height: 100vh;
+      width: 100vw;
+      gap: 0;
+    }
+    header#topbar { grid-column: 1 / -1; }
+    nav#rail { grid-column: 1; grid-row: 2; }
+    main#view { grid-column: 2; grid-row: 2; min-width: 0; min-height: 0; }
+    aside#sidePanel { grid-column: 3; grid-row: 2; }
+    footer#statusbar { grid-column: 1 / -1; }
+
+    header#topbar {
+      display: flex; align-items: center; gap: 10px;
+      background: linear-gradient(180deg, #221b0c, #171309);
+      border-bottom: 1px solid var(--border);
+      padding: 0 12px; font-size: 12px;
+    }
+    header#topbar .brand { color: var(--gold-bright); font-weight: 700; letter-spacing: 1px; }
+    header#topbar .server { color: var(--muted); }
+    header#topbar .spacer { flex: 1; }
+    header#topbar button {
+      background: var(--panel-2); color: var(--ink); border: 1px solid var(--border);
+      border-radius: 4px; padding: 3px 10px; font-size: 11px; cursor: pointer;
+    }
+    header#topbar button:hover { border-color: var(--gold); color: var(--gold-bright); }
+
+    nav#rail {
+      background: var(--panel); border-right: 1px solid var(--border);
+      padding: 10px 8px; font-size: 12px; overflow-y: auto;
+    }
+    nav#rail .rail-title { color: var(--muted); text-transform: uppercase; font-size: 10px; letter-spacing: 1px; margin: 8px 4px 4px; }
+    nav#rail a { display: block; color: var(--ink); text-decoration: none; padding: 5px 8px; border-radius: 4px; }
+    nav#rail a:hover { background: var(--panel-2); color: var(--gold-bright); }
+
+    aside#sidePanel {
+      background: var(--panel); border-left: 1px solid var(--border);
+      padding: 10px; font-size: 11px; overflow-y: auto;
+    }
+    aside#sidePanel h3 { color: var(--gold); font-size: 11px; text-transform: uppercase; letter-spacing: 1px; margin: 8px 0 4px; }
+    aside#sidePanel .kv { display: flex; justify-content: space-between; padding: 2px 0; border-bottom: 1px dashed #241d0e; }
+    aside#sidePanel .kv b { color: var(--gold-bright); }
+    aside#sidePanel .log { color: var(--muted); font-family: Consolas, monospace; max-height: 180px; overflow-y: auto; white-space: pre-wrap; }
+
+    footer#statusbar {
+      display: flex; align-items: center; gap: 14px;
+      background: linear-gradient(0deg, #221b0c, #171309);
+      border-top: 1px solid var(--border);
+      padding: 0 12px; font-size: 11px; color: var(--muted);
+    }
+    footer#statusbar .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--danger); display: inline-block; margin-right: 5px; }
+    footer#statusbar .dot.on { background: var(--ok); }
+
+    /* ================================================================
+       PALCO CENTRAL DO CLIENTE (#centerClientViewport)
+       ================================================================ */
+    main#view {
+      position: relative;
+      background: radial-gradient(circle at 50% 42%, #241d0e 0%, #0d0b06 72%);
+      display: flex; align-items: center; justify-content: center;
+      overflow: hidden;
+    }
+    #centerClientViewport {
+      position: relative;
+      width: 100%; height: 100%;
+      display: flex; align-items: center; justify-content: center;
+    }
+    #liveCharFrame {
+      max-width: 100%; max-height: 100%;
+      width: auto; height: auto;
+      display: none;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      box-shadow: 0 0 40px rgba(0,0,0,.7), 0 0 18px rgba(201,162,75,.15);
+      cursor: crosshair;
+      background: #0d0b06;
+    }
+    #liveCharFrame.visible { display: block; }
+
+    /* ================================================================
+       LOGO CENTRAL INTERATIVA — no MEIO da tela (clique abre/foca cliente)
+       ================================================================ */
+    #centerLogoLauncher {
+      position: absolute;
+      left: 50%; top: 50%;
+      transform: translate(-50%, -50%);
+      z-index: 20;
+      display: flex; flex-direction: column; align-items: center; gap: 12px;
+      background: linear-gradient(180deg, rgba(31,26,14,.96), rgba(13,11,6,.97));
+      border: 1px solid var(--gold);
+      border-radius: 14px;
+      padding: 26px 34px;
+      box-shadow: 0 0 0 1px rgba(201,162,75,.25), 0 12px 48px rgba(0,0,0,.75), 0 0 32px rgba(255,211,92,.18);
+      cursor: pointer;
+      user-select: none;
+      transition: transform .15s ease, box-shadow .15s ease, opacity .25s ease;
+      text-align: center;
+    }
+    #centerLogoLauncher:hover {
+      transform: translate(-50%, -50%) scale(1.035);
+      box-shadow: 0 0 0 1px rgba(201,162,75,.5), 0 16px 56px rgba(0,0,0,.8), 0 0 44px rgba(255,211,92,.3);
+    }
+    #centerLogoLauncher.hidden {
+      /* Selo flutuante compacto e CLICÁVEL no topo do palco — nunca invisível:
+         manter pointer-events:auto para que um clique restaure a logo central. */
+      top: 10px;
+      left: 50%;
+      transform: translateX(-50%) scale(0.72);
+      opacity: 0.92;
+      pointer-events: auto;
+      padding: 8px 16px;
+    }
+    #centerLogoLauncher .emblem {
+      width: 92px; height: 92px; border-radius: 50%;
+      background: radial-gradient(circle at 35% 30%, #ffe9a8 0%, #ffd35c 30%, #c9a24b 62%, #7a5a1e 100%);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 40px; font-weight: 900; color: #241d0e;
+      border: 3px solid #7a5a1e;
+      box-shadow: inset 0 2px 8px rgba(255,255,255,.55), 0 4px 16px rgba(0,0,0,.6);
+      letter-spacing: -2px;
+    }
+    #centerLogoLauncher .logo-title { color: var(--gold-bright); font-weight: 800; font-size: 16px; letter-spacing: 1px; }
+    #centerLogoLauncher .logo-sub { color: var(--muted); font-size: 11px; max-width: 260px; line-height: 1.45; }
+    #btnLaunchClientLogo {
+      margin-top: 4px;
+      background: linear-gradient(180deg, #ffd35c, #c9a24b);
+      color: #241d0e; font-weight: 800; font-size: 12px;
+      border: 1px solid #7a5a1e; border-radius: 8px;
+      padding: 9px 22px; cursor: pointer; letter-spacing: .5px;
+      box-shadow: 0 3px 12px rgba(255,211,92,.35);
+      transition: filter .12s ease;
+    }
+    #btnLaunchClientLogo:hover { filter: brightness(1.12); }
+    #btnLaunchClientLogo:active { transform: translateY(1px); }
+    #launchToast {
+      position: absolute; bottom: 52px; left: 50%; transform: translateX(-50%);
+      background: rgba(23,19,9,.95); border: 1px solid var(--gold); color: var(--gold-bright);
+      font-size: 11px; padding: 6px 14px; border-radius: 20px; z-index: 30;
+      opacity: 0; pointer-events: none; transition: opacity .2s ease;
+      white-space: nowrap;
+    }
+    #launchToast.show { opacity: 1; }
+
+    /* ================================================================
+       TELA CHEIA DO PERSONAGEM (?charFull=1) — ZERO TELA PRETA NO MEIO
+       O rail e o painel somem (display:none). Sem grid-column explícito,
+       main#view cairia na coluna 0px do rail e deixaria faixa preta no
+       meio da tela. Por isso: grid de 1 coluna + 1/-1 em todos os itens.
+       ================================================================ */
+    body.char-fullscreen #app {
+      grid-template-columns: 1fr;
+      grid-template-rows: 34px 1fr 38px;
+    }
+    body.char-fullscreen header,
+    body.char-fullscreen main,
+    body.char-fullscreen footer {
+      grid-column: 1 / -1;
+    }
+    body.char-fullscreen nav#rail,
+    body.char-fullscreen aside#sidePanel {
+      display: none;
+    }
+    body.char-fullscreen main#view {
+      grid-row: 2;
+      width: 100%;
+      height: 100%;
+    }
+    body.char-fullscreen #liveCharFrame {
+      width: 100%;
+      height: 100%;
+      max-width: 100vw;
+      max-height: 100%;
+      object-fit: contain;
+      border: none;
+      border-radius: 0;
+    }
+    body.char-fullscreen #centerLogoLauncher {
+      padding: 18px 24px;
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <!-- ======================= TOPBAR ======================= -->
+    <header id="topbar">
+      <span class="brand">⚔ T BOT</span>
+      <span class="server">RubinOT 2.0 · Vadel — Autonomous Tibia Bot (MVP 1.0)</span>
+      <span class="spacer"></span>
+      <button id="btnAgentStart" title="Ligar agente autônomo">▶ Agente</button>
+      <button id="btnAgentPause" title="Pausar agente">⏸ Pausar</button>
+      <button id="btnTopLaunchClient" title="Abrir (se fechado) ou focar (se aberto) o RubinOT Client real">🚀 Abrir/Focar RubinOT</button>
+      <button id="btnToggleCharFull" title="Tela cheia do personagem (?charFull=1)">⛶ Tela Cheia</button>
+    </header>
+
+    <!-- ======================= RAIL ======================= -->
+    <nav id="rail">
+      <div class="rail-title">Módulos</div>
+      <a href="#vision">👁 Visão Computacional</a>
+      <a href="#cavebot">🗺 Cavebot</a>
+      <a href="#loot">💰 Loot</a>
+      <a href="#hotkeys">⌨ Hotkeys</a>
+      <a href="#learning">🧠 Aprendizado</a>
+      <div class="rail-title">Cliente</div>
+      <a href="#" id="railLaunchClient">🚀 Abrir/Focar RubinOT</a>
+      <a href="#" id="railRefreshFrame">🔄 Atualizar Frame</a>
+    </nav>
+
+    <!-- ======================= PALCO CENTRAL ======================= -->
+    <main id="view">
+      <section id="centerClientViewport" aria-label="Palco central do cliente RubinOT">
+        <!-- Frame ao vivo do cliente real (/api/client/frame) -->
+        <img id="liveCharFrame" alt="RubinOT Client — frame ao vivo" />
+
+        <!-- LOGO CENTRAL INTERATIVA: clica e abre (se fechado) ou foca (se aberto) -->
+        <div id="centerLogoLauncher" role="button" tabindex="0"
+             aria-label="Clique para abrir ou focar o RubinOT Client">
+          <div class="emblem">TB</div>
+          <div class="logo-title">T BOT · RubinOT Client</div>
+          <div class="logo-sub">Clique na logo para <b>abrir</b> o cliente real se estiver fechado,
+            ou <b>focar</b> a janela se já estiver aberto — o cliente aparece no meio da tela.</div>
+          <button id="btnLaunchClientLogo" type="button">🚀 ABRIR / FOCAR RUBINOT CLIENT</button>
+        </div>
+
+        <div id="launchToast"></div>
+      </section>
+    </main>
+
+    <!-- ======================= PAINEL LATERAL ======================= -->
+    <aside id="sidePanel">
+      <h3>Cliente</h3>
+      <div class="kv"><span>Detecção Win32</span><b id="spDetected">—</b></div>
+      <div class="kv"><span>PID</span><b id="spPid">—</b></div>
+      <div class="kv"><span>Janela</span><b id="spTitle">—</b></div>
+      <h3>Aprendizado em tempo real</h3>
+      <div class="kv"><span>Cliques</span><b id="spClicks">0</b></div>
+      <div class="kv"><span>Movimentos</span><b id="spMoves">0</b></div>
+      <div class="kv"><span>Teclas</span><b id="spKeys">0</b></div>
+      <div class="kv"><span>Launches</span><b id="spLaunches">0</b></div>
+      <h3>Eventos</h3>
+      <div class="log" id="spLog">aguardando runtime…</div>
+    </aside>
+
+    <!-- ======================= STATUSBAR ======================= -->
+    <footer id="statusbar">
+      <span><span class="dot" id="sbDot"></span><span id="sbStatus">conectando…</span></span>
+      <span id="sbFrame">frame —</span>
+      <span class="spacer" style="flex:1"></span>
+      <span>:8791 · ?charFull=1 · Qwen Coder Web</span>
+    </footer>
+  </div>
+
+  <script src="./ui/app.js"></script>
+</body>
+</html>
